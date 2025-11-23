@@ -154,10 +154,13 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
             margin-left: 260px;
             flex: 1;
             display: flex;
-            gap: 30px;
+            gap: 50px;
             padding: 40px;
         }
-        .center-area { flex: 2; max-width: 820px; }
+        .center-area { 
+            flex: 2; 
+            max-width: 820px; 
+        }
         .page-title {
             font-size: 30px;
             font-weight: 700;
@@ -168,19 +171,34 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
             background: white;
             border-radius: 18px;
             padding: 28px;
+            height: fit-content;
             box-shadow: 0 6px 25px rgba(0,0,0,0.06);
             margin-bottom: 30px;
         }
         .announcement {
             display: flex;
             gap: 18px;
+            
+            height: 400px;
             padding: 20px 0;
-            border-bottom: 1px solid #f1f5f9;
+            border: 1px solid #f1f5f9;
+            margin-bottom: 18px;
+            border-radius: 12px;
         }
         .announcement:last-child { border-bottom: none; }
         .announcement img { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
-        .announcement-meta { font-size: 13.5px; color: #64748b; margin-bottom: 8px; }
-        .announcement-title { font-size: 20px; font-weight: 600; color: #065f46; margin-bottom: 10px; }
+        .announcement-meta { 
+            font-size: 13.5px; 
+            color: #64748b; 
+            margin-top: 10px;
+            margin-bottom: 8px; }
+        .announcement-title { 
+            font-size: 20px; 
+            font-weight: 600; 
+            margin-top: 50px;
+            color: #065f46; 
+            margin-bottom: 10px; 
+        }
 
         /* Right Sidebar */
         .right-sidebar {
@@ -389,21 +407,12 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
                     <div class="appointment-card">
                         <div class="appointment-header">
                             <h4><?= htmlspecialchars($ap['fullname']) ?></h4>
-                            <Style>
-                            .status_status{
-                                justify-content: right;
-                                margin-top: 10px;
-                                margin-left: 210px;
-                            }
-                        </Style>
-                            <span class="status_status"-<?= $ap['status'] === 'rescheduled' ? 'rescheduled' : strtolower($ap['status']) ?>">
-                                <?= ucfirst($ap['status']) ?>
-                            </span>
+                        
                         </div>
                         <Style>
                             .appointment-date{
                                 justify-content: right;
-                                margin-top: -40px;
+                                margin-top: -20px;
                                 margin-left: 210px;
                             }
                         </Style>
@@ -413,16 +422,39 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
                         <Style>
                             .appointment-type{
                                 justify-content: left;
-                                margin-top: 1px;
+                                margin-top: 20px;
                                 margin-bottom: 10px;
                             }
                         </Style>
                         <div class="appointment-type">
                             <strong>Type:</strong> <?= ucfirst($ap['type']) ?>
                         </div>
+                        <style>
+                            .btn-view{
+                                margin-top: 10px;
+                                color:#475569; 
+                                line-height:1.6;
+                                height:30px;
+                                margin-left: 250px;
+                                overflow:hidden;
+                                text-overflow: ellipsis;
+                                justify-content: right;
+                            }
+                        </style>
                         <button class="btn-view">
                             <i class="fas fa-eye"></i> View Full Text
                         </button>
+                        <Style>
+                            .status{
+                                margin-top: 10px;
+                                margin-left: 150px;
+                                margin-bottom: -25px;
+                            }
+                        </Style>
+                            
+                            <span class="status status"-<?= $ap['status'] === 'rescheduled' ? 'rescheduled' : strtolower($ap['status']) ?>">
+                                <?= ucfirst($ap['status']) ?>
+                            </span>
                     </div>
                 </div>
                 <?php endforeach; ?>
