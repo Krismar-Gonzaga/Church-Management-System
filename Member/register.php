@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once 'Database/DBconnection.php'; // Create this file for DB connection (details below)
+require_once '../Database/DBconnection.php'; // Create this file for DB connection (details below)
 
 $errors = [];
 $success = '';
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .left { background: #ffffff; }
         .right {
             background: linear-gradient(rgba(5, 150, 105, 0.92), rgba(6, 95, 70, 0.98)),
-                        url('images/priestImage.png') center/cover;
+                        url('../images/priestImage.png') center/cover;
             color: white;
             position: relative;
             text-align: center;
@@ -208,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Left: Register Form -->
     <div class="left">
         <div class="logo">
-            <img src="images/logo.png" alt="SJPL Logo">        
+            <img src="../images/logo.png" alt="SJPL Logo">        
         </div>
 
         <h1>REGISTER</h1>

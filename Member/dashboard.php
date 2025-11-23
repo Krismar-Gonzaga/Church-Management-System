@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once 'Database/DBconnection.php';
+require_once '../Database/DBconnection.php';
 
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     header('Location: login.php');
@@ -251,7 +251,7 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
     <!-- TOP FIXED HEADER -->
     <div class="top-header">
         <div class="header-left">
-            <img src="images/logo.png" alt="SJPL Logo" class="logo-img">
+            <img src="../images/logo.png" alt="SJPL Logo" class="logo-img">
             <h3 class="parish-name">SJHS</h3 >
             <style>
                 .parish-name {

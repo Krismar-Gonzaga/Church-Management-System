@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once 'Database/DBconnection.php'; // This connects to your sjpl_church database
+require_once '../Database/DBconnection.php'; // This connects to your sjpl_church database
 
 $error = '';
 
@@ -85,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             content: '';
             position: absolute;
             inset: 0;
-            background: url('images/priestImage.png') center/cover;
+            background: url('../images/priestImage.png') center/cover;
             opacity: 0.2;
         }
         .logo {
@@ -100,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 32px;
             margin-bottom: 40px;
             color: #065f46;
+            font-family: 'Playfair Display', serif;
         }
         .input-group {
             position: relative;
@@ -197,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Left: Login Form -->
     <div class="left">
         <div class="logo">
-            <img src="images/logo.png" alt="SJPL Logo">
+            <img src="../images/logo.png" alt="SJPL Logo">
         </div>
 
         <h1>LOGIN</h1>
