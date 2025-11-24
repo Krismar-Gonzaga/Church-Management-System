@@ -270,7 +270,7 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
     <div class="top-header">
         <div class="header-left">
             <img src="../images/logo.png" alt="SJPL Logo" class="logo-img">
-            <h3 class="parish-name">SJHS</h3 >
+            <h3 class="parish-name">San Jose Parish Laligan</h3 >
             <style>
                 .parish-name {
                     font-size: 22px;

@@ -231,7 +231,7 @@ $announcements = $pdo->query("
     <div class="top-header">
         <div class="header-left">
             <img src="../images/logo.png" alt="SJPL Logo">
-            <h3 class="parish-name">SJHS</h3 >
+            <h3 class="parish-name">San Jose Parish Laligan</h3 >
             <style>
                 .parish-name {
                     font-size: 22px;
