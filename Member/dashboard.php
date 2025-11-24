@@ -355,12 +355,12 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
         <div class="sidebar">
             
             <div class="nav-menu">
-                <div class="nav-item active"><i class="fas fa-tachometer-alt"></i> Dashboard</div>
-                <div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div>
-                <div class="nav-item"><i class="fas fa-calendar"></i> Calendar</div>
-                <div class="nav-item"><i class="fas fa-clock"></i> Appointments</div>
-                <div class="nav-item"><i class="fas fa-coins"></i> Financial</div>
-                <div class="nav-item"><i class="fas fa-user"></i> My Profile</div>
+                <a href="dashboard.php"><div class="nav-item active"><i class="fas fa-tachometer-alt"></i> Dashboard</div></a>
+                <a href="announcements.php"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>
+                <a href="calendar.php"><div class="nav-item"><i class="fas fa-calendar"></i> Calendar</div></a>
+                <a href="appointments.php"><div class="nav-item"><i class="fas fa-clock"></i> Appointments</div></a>
+                <a href="financial.php"><div class="nav-item"><i class="fas fa-coins"></i> Financial</div></a>
+                <a href="profile.php"><div class="nav-item"><i class="fas fa-user"></i> My Profile</div></a>
                 <div class="nav-item"><i class="fas fa-question-circle"></i> Help & Support</div>
             </div>
         </div>
