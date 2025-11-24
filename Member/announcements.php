@@ -53,7 +53,7 @@ $announcements = $pdo->query("
         .header-left { display: flex; align-items: center; gap: 22px; }
         .header-left img { height: 58px; }
         .header-left .priest-img { width: 54px; height: 54px; border-radius: 50%; border: 3px solid #059669; object-fit: cover; }
-        .header-search { flex: 1; max-width: 500px; margin: 0 40px; }
+        
         .search-box { position: relative; }
         .search-box input {
             width: 100%;
@@ -230,9 +230,61 @@ $announcements = $pdo->query("
     <!-- TOP HEADER -->
     <div class="top-header">
         <div class="header-left">
-            <img src="../images/sjpl_logo.png" alt="SJPL Logo">
-            <img src="../images/priestImage.png" alt="Rev. Fr. Dondz Minguez" class="priest-img">
+            <img src="../images/logo.png" alt="SJPL Logo">
+            <h3 class="parish-name">SJHS</h3 >
+            <style>
+                .parish-name {
+                    font-size: 22px;
+                    color: #065f46;
+                    font-weight: 700;
+                }
+            </style>
         </div>
+        <!-- SEARCH BAR (CENTERED) -->
+         <style>
+            /* SEARCH BAR STYLES */
+            .header-search {
+                flex: 1;
+                margin-right: 50px;
+                display: flex;
+                justify-content: right;
+                padding: 0 30px;
+            }
+
+            .search-box {
+                position: relative;
+                width: 100%;
+                max-width: 500px;
+            }
+
+            .search-box input {
+                width: 100%;
+                padding: 14px 50px 14px 48px;
+                border: 2px solid #e2e8f0;
+                border-radius: 16px;
+                font-size: 15px;
+                background: #f8fafc;
+                outline: none;
+                transition: all 0.3s;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            }
+
+            .search-box input:focus {
+                border-color: #059669;
+                background: white;
+                box-shadow: 0 8px 25px rgba(5,150,105,0.15);
+            }
+
+            .search-icon {
+                position: absolute;
+                left: 18px;
+                top: 50%;
+                transform: translateY(-50%);
+                color: #059669;
+                font-size: 18px;
+                pointer-events: none;
+            }
+         </style>
 
         <div class="header-search">
             <div class="search-box">
@@ -258,12 +310,9 @@ $announcements = $pdo->query("
     <div class="main-layout">
         <!-- Sidebar -->
         <div class="sidebar">
-            <div class="logo">
-                <img src="../images/sjpl_logo.png" alt="SJPL">
-            </div>
             <div class="nav-menu">
-                <a href="dashboard.php"><div class="nav-item active"><i class="fas fa-tachometer-alt"></i> Dashboard</div></a>
-                <a href="announcements.php"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>
+                <a href="dashboard.php"><div class="nav-item"><i class="fas fa-tachometer-alt"></i> Dashboard</div></a>
+                <a href="announcements.php"><div class="nav-item active"><i class="fas fa-bullhorn"></i> Announcements</div></a>
                 <a href="calendar.php"><div class="nav-item"><i class="fas fa-calendar"></i> Calendar</div></a>
                 <a href="appointments.php"><div class="nav-item"><i class="fas fa-clock"></i> Appointments</div></a>
                 <a href="financial.php"><div class="nav-item"><i class="fas fa-coins"></i> Financial</div></a>
