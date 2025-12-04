@@ -3,32 +3,124 @@ session_start();
 require_once '../Database/DBconnection.php';
 
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header('Location: login.php');
+    header('Location: ../login.php');
     exit;
 }
 
 $user_fullname = $_SESSION['user'] ?? 'Member';
 $user_id = $_SESSION['user_id'] ?? 0;
+$user_role = $_SESSION['role'] ?? 'member';
 
-// Fetch appointments based on role
-if ($_SESSION['role'] === 'priest' || $_SESSION['role'] === 'admin') {
-    $stmt = $pdo->query("
-        SELECT ar.*, u.fullname AS requester_name, u.profile_pic 
-        FROM appointment_requests ar 
-        JOIN users u ON ar.user_id = u.id 
-        ORDER BY ar.requested_at DESC
-    ");
-} else {
-    $stmt = $pdo->prepare("
-        SELECT ar.*, u.fullname AS requester_name, u.profile_pic 
-        FROM appointment_requests ar 
-        JOIN users u ON ar.user_id = u.id 
-        WHERE ar.user_id = ? 
-        ORDER BY ar.requested_at DESC
-    ");
-    $stmt->execute([$user_id]);
+// Handle appointment cancellation
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'cancel') {
+    $appointment_id = (int)($_POST['appointment_id'] ?? 0);
+    
+    if ($appointment_id > 0) {
+        try {
+            // Verify the appointment belongs to the user
+            $check_stmt = $pdo->prepare("SELECT id FROM appointment_requests WHERE id = ? AND user_id = ?");
+            $check_stmt->execute([$appointment_id, $user_id]);
+            
+            if ($check_stmt->fetch()) {
+                $stmt = $pdo->prepare("UPDATE appointment_requests SET status = 'cancelled', updated_at = NOW() WHERE id = ?");
+                if ($stmt->execute([$appointment_id])) {
+                    $message = 'Appointment cancelled successfully!';
+                    $message_type = 'success';
+                    header("Location: appointments.php?message=cancelled");
+                    exit;
+                }
+            }
+        } catch (Exception $e) {
+            // Silently fail
+        }
+    }
 }
+
+// Handle message from redirect
+if (isset($_GET['message'])) {
+    switch ($_GET['message']) {
+        case 'cancelled':
+            $message = 'Appointment cancelled successfully!';
+            $message_type = 'success';
+            break;
+        case 'requested':
+            $message = 'Appointment request submitted successfully!';
+            $message_type = 'success';
+            break;
+    }
+}
+
+// Get filter parameters
+$status_filter = isset($_GET['status']) ? $_GET['status'] : 'all';
+$type_filter = isset($_GET['type']) ? $_GET['type'] : 'all';
+$search_query = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+// Build query based on role
+$where_conditions = ["u.id = ?"];
+$params = [$user_id];
+
+if ($status_filter !== 'all') {
+    $where_conditions[] = "ar.status = ?";
+    $params[] = $status_filter;
+}
+
+if ($type_filter !== 'all') {
+    $where_conditions[] = "ar.type = ?";
+    $params[] = $type_filter;
+}
+
+if (!empty($search_query)) {
+    $where_conditions[] = "(ar.purpose LIKE ? OR ar.notes LIKE ?)";
+    $search_term = "%$search_query%";
+    $params[] = $search_term;
+    $params[] = $search_term;
+}
+
+$where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
+
+// Get appointment statistics for the member
+$stats_query = "
+    SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
+        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
+        SUM(CASE WHEN status = 'rescheduled' THEN 1 ELSE 0 END) as rescheduled
+    FROM appointment_requests 
+    WHERE user_id = ?
+";
+$stats_stmt = $pdo->prepare($stats_query);
+$stats_stmt->execute([$user_id]);
+$stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
+
+// Fetch member's appointments
+$query = "
+    SELECT ar.*, u.fullname AS requester_name, u.profile_pic 
+    FROM appointment_requests ar 
+    JOIN users u ON ar.user_id = u.id 
+    $where_clause
+    ORDER BY ar.preferred_datetime DESC
+";
+
+$stmt = $pdo->prepare($query);
+$stmt->execute($params);
 $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get upcoming appointments for sidebar
+$upcoming_query = "
+    SELECT ar.*, u.fullname 
+    FROM appointment_requests ar 
+    JOIN users u ON ar.user_id = u.id 
+    WHERE u.id = ? 
+    AND ar.status = 'approved'
+    AND ar.preferred_datetime >= CURDATE()
+    ORDER BY ar.preferred_datetime ASC 
+    LIMIT 5
+";
+$upcoming_stmt = $pdo->prepare($upcoming_query);
+$upcoming_stmt->execute([$user_id]);
+$upcoming_appointments = $upcoming_stmt->fetchAll();
 ?>
 
 <!DOCTYPE html>
@@ -36,7 +128,7 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SJPL | Appointments</title>
+    <title>SJPL | My Appointments</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
@@ -55,7 +147,6 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
             padding: 0 40px; z-index: 1000; box-shadow: 0 4px 20px rgba(0,0,0,0.08);
         }
         .header-left { display: flex; align-items: center; gap: 22px; }
-        }
         .header-left img { height: 58px; }
         .header-left .priest-img { width: 54px; height: 54px; border-radius: 50%; border: 3px solid var(--green); object-fit: cover; }
 
@@ -69,11 +160,12 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         .search-icon { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--green); }
 
         .header-right { display: flex; align-items: center; gap: 20px; }
-        .notification-bell { position: relative; }
-        .notification-bell .badge { position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; font-size: 10px; width: 19px; height: 19px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-        .user-profile { display: flex; align-items: center; gap: 12px; background: var(--light-green); padding: 10px 18px; border-radius: 14px; border: 1px solid #d1fae5; }
+        .notification-bell { position: relative; font-size: 23px; color: #64748b; cursor: pointer; }
+        .notification-bell .badge { position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; font-size: 10px; width: 19px; height: 19px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .user-profile { display: flex; align-items: center; gap: 12px; background: var(--light-green); padding: 10px 18px; border-radius: 14px; border: 1px solid #d1fae5; cursor: pointer; }
         .user-profile:hover { background: #d1fae5; }
         .user-profile img { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--green); }
+        .user-profile span { font-weight: 600; color: #065f46; }
 
         .main-layout { display: flex; margin-top: 80px; min-height: calc(100vh - 80px); }
         .sidebar { width: 260px; background: white; border-right: 1px solid #e2e8f0; position: fixed; top: 80px; bottom: 0; overflow-y: auto; z-index: 999; }
@@ -87,23 +179,72 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         .page-title { font-size: 32px; font-weight: 700; margin-bottom: 20px; color: #1e293b; }
 
+        /* Statistics */
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px; margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white; padding: 20px; border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06); text-align: center;
+        }
+        .stat-value {
+            font-size: 28px; font-weight: 700; margin-bottom: 8px;
+        }
+        .stat-value.total { color: var(--green); }
+        .stat-value.pending { color: #f59e0b; }
+        .stat-value.approved { color: var(--green); }
+        .stat-label { font-size: 14px; color: #64748b; font-weight: 500; }
+
+        /* Filter Bar */
         .filter-bar {
             display: flex; justify-content: space-between; align-items: center;
             background: white; padding: 18px 24px; border-radius: 16px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.06); margin-bottom: 30px;
+            flex-wrap: wrap; gap: 15px;
+        }
+        .filter-group {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .filter-select {
+            padding: 10px 16px; border-radius: 12px; border: 2px solid #e2e8f0;
+            background: white; font-size: 14px; min-width: 150px;
+        }
+        .filter-select:focus {
+            outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(5,150,105,0.1);
         }
         .btn-request {
-            background: white; border: 2px solid var(--green); color: var(--green);
-            padding: 12px 28px; border-radius: 14px; font-weight: 600; cursor: pointer;
-            display: flex; align-items: center; gap: 8px; transition: 0.3s;
+            background: var(--green); color: white; border: none;
+            padding: 12px 28px; border-radius: 14px; font-weight: 600; 
+            cursor: pointer; display: flex; align-items: center; gap: 8px; 
+            transition: 0.3s; text-decoration: none; white-space: nowrap;
         }
-        .btn-request:hover { background: var(--green); color: white; }
+        .btn-request:hover { 
+            background: var(--green-dark); color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(5,150,105,0.2);
+        }
+
+        /* Message Alerts */
+        .alert {
+            padding: 14px 20px; border-radius: 12px; margin-bottom: 20px;
+            font-size: 14px; font-weight: 500; display: flex;
+            justify-content: space-between; align-items: center;
+        }
+        .alert-success {
+            background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0;
+        }
+        .alert-close {
+            background: none; border: none; font-size: 20px;
+            cursor: pointer; color: inherit; opacity: 0.7;
+        }
+        .alert-close:hover { opacity: 1; }
 
         .appointments-grid { display: grid; gap: 24px; }
         .appointment-card {
             background: white; border-radius: 20px; overflow: hidden;
             box-shadow: 0 8px 30px rgba(0,0,0,0.08); transition: all 0.4s ease;
-            border: 1px solid #f1f5f9;
+            border: 1px solid #f1f5f9; position: relative;
         }
         .appointment-card:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(5,150,105,0.18); border-color: var(--green); }
 
@@ -125,18 +266,50 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         .detail-value { font-weight: 600; color: #065f46; }
 
         .notes-section { background: #f8fafc; padding: 16px; border-radius: 12px; margin: 16px 0; }
-        .notes-title { font-weight: 600; color: #059669; margin-bottom: 8px; }
+        .notes-title { font-weight: 600; color: #059669; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .notes-text { color: #475569; line-height: 1.6; font-size: 14px; }
 
-        .btn-view-details {
-            background: var(--green); color: white; padding: 12px; border: none;
-            border-radius: 12px; font-weight: 600; cursor: pointer; width: 100%;
-            transition: 0.3s;
+        .card-actions {
+            display: flex; gap: 10px; margin-top: 20px;
         }
-        .btn-view-details:hover { background: var(--green-dark); }
+        .btn-view-details, .btn-cancel {
+            padding: 12px 20px; border: none; border-radius: 12px;
+            font-weight: 600; cursor: pointer; display: flex;
+            align-items: center; gap: 8px; transition: 0.3s; flex: 1;
+        }
+        .btn-view-details {
+            background: var(--green); color: white;
+        }
+        .btn-view-details:hover {
+            background: var(--green-dark); transform: translateY(-2px);
+        }
+        .btn-cancel {
+            background: #fef3c7; color: #92400e; border: 2px solid #fef3c7;
+        }
+        .btn-cancel:hover {
+            background: #fde68a; border-color: #fbbf24;
+            transform: translateY(-2px);
+        }
+        .btn-cancel:disabled {
+            opacity: 0.5; cursor: not-allowed;
+            background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center; padding: 80px 20px; background: white; border-radius: 20px;
+            color: #94a3b8; box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+        }
+        .empty-state i { font-size: 64px; margin-bottom: 20px; opacity: 0.3; }
+        .empty-state h3 { font-size: 22px; margin-bottom: 10px; color: #64748b; }
+        .empty-state p { font-size: 15px; margin-bottom: 25px; }
 
         @media (max-width: 1200px) {
             .content-wrapper { flex-direction: column; padding: 20px; }
             .right-sidebar { width: 100%; position: static; }
+            .filter-bar { flex-direction: column; align-items: stretch; }
+            .filter-group { flex-direction: column; align-items: stretch; }
+            .filter-select { width: 100%; }
         }
     </style>
 </head>
@@ -148,15 +321,19 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <img src="../images/logo.png" alt="SJPL Logo">
             <h3 style="color:#065f46; font-size:24px; font-weight:700;">San Jose Parish Laligan</h3>
         </div>
-        <div class="header-search">
+        <form method="GET" action="" class="header-search">
             <div class="search-box">
                 <i class="fas fa-search search-icon"></i>
-                <input type="text" placeholder="Search appointments...">
+                <input type="text" name="search" placeholder="Search your appointments..." 
+                       value="<?= htmlspecialchars($search_query) ?>">
             </div>
-        </div>
+        </form>
         <div class="header-right">
-            <div class="notification-bell"><i class="fas fa-bell"></i><span class="badge">3</span></div>
-            <div class="user-profile">
+            <div class="notification-bell">
+                <i class="fas fa-bell"></i>
+                <span class="badge"><?= $stats['pending'] ?? 0 ?></span>
+            </div>
+            <div class="user-profile" onclick="window.location.href='profile.php'">
                 <span><?= htmlspecialchars($user_fullname) ?></span>
                 <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User">
                 <i class="fas fa-caret-down"></i>
@@ -167,12 +344,11 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <!-- SIDEBAR -->
     <div class="main-layout">
         <div class="sidebar">
-           
             <div class="nav-menu" style="margin-top:20px;">
                 <a href="dashboard.php"><div class="nav-item"><i class="fas fa-tachometer-alt"></i> Dashboard</div></a>
                 <a href="announcements.php"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>
                 <a href="calendar.php"><div class="nav-item"><i class="fas fa-calendar"></i> Calendar</div></a>
-                <a href="appointments.php"><div class="nav-item active"><i class="fas fa-clock"></i> Appointments</div></a>
+                <a href="appointments.php"><div class="nav-item active"><i class="fas fa-clock"></i> My Appointments</div></a>
                 <a href="financial.php"><div class="nav-item"><i class="fas fa-coins"></i> Financial</div></a>
                 <a href="profile.php"><div class="nav-item"><i class="fas fa-user"></i> My Profile</div></a>
                 <a href="support.php"><div class="nav-item"><i class="fas fa-question-circle"></i> Help & Support</div></a>
@@ -184,40 +360,114 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="center-content">
                 <h1 class="page-title">My Appointments</h1>
 
-                <div class="filter-bar">
-                    <div style="display:flex; gap:16px; align-items:center;">
-                        <strong>Filter:</strong>
-                        <select style="padding:10px 16px; border-radius:12px; border:2px solid #e2e8f0;">
-                            <option>All Types</option>
-                            <option>Baptism</option>
-                            <option>Wedding Mass</option>
-                            <option>Mass Intention</option>
-                        </select>
-                        <select style="padding:10px 16px; border-radius:12px; border:2px solid #e2e8f0;">
-                            <option>All Status</option>
-                            <option>Pending</option>
-                            <option>Approved</option>
-                        </select>
+                <?php if (isset($message)): ?>
+                    <div class="alert alert-success">
+                        <?= htmlspecialchars($message) ?>
+                        <button class="alert-close" onclick="this.parentElement.style.display='none'">&times;</button>
                     </div>
-                    <a href="requestAppointments.php">
-                        <button class="btn-request">
-                            <i class="fas fa-plus"></i> Request Appointment
-                        </button>
-                    </a>
+                <?php endif; ?>
+
+                <!-- Statistics -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value total"><?= $stats['total'] ?? 0 ?></div>
+                        <div class="stat-label">Total Appointments</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value pending"><?= $stats['pending'] ?? 0 ?></div>
+                        <div class="stat-label">Pending</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value approved"><?= $stats['approved'] ?? 0 ?></div>
+                        <div class="stat-label">Approved</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value"><?= $stats['rejected'] ?? 0 ?></div>
+                        <div class="stat-label">Rejected</div>
+                    </div>
                 </div>
 
+                <!-- Filter Bar -->
+                <form method="GET" action="" class="filter-bar">
+                    <div class="filter-group">
+                        <select name="status" class="filter-select" onchange="this.form.submit()">
+                            <option value="all" <?= $status_filter === 'all' ? 'selected' : '' ?>>All Status</option>
+                            <option value="pending" <?= $status_filter === 'pending' ? 'selected' : '' ?>>Pending</option>
+                            <option value="approved" <?= $status_filter === 'approved' ? 'selected' : '' ?>>Approved</option>
+                            <option value="rejected" <?= $status_filter === 'rejected' ? 'selected' : '' ?>>Rejected</option>
+                            <option value="cancelled" <?= $status_filter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
+                            <option value="rescheduled" <?= $status_filter === 'rescheduled' ? 'selected' : '' ?>>Rescheduled</option>
+                        </select>
+                        <select name="type" class="filter-select" onchange="this.form.submit()">
+                            <option value="all" <?= $type_filter === 'all' ? 'selected' : '' ?>>All Types</option>
+                            <option value="baptism" <?= $type_filter === 'baptism' ? 'selected' : '' ?>>Baptism</option>
+                            <option value="wedding" <?= $type_filter === 'wedding' ? 'selected' : '' ?>>Wedding</option>
+                            <option value="mass_intention" <?= $type_filter === 'mass_intention' ? 'selected' : '' ?>>Mass Intention</option>
+                            <option value="confession" <?= $type_filter === 'confession' ? 'selected' : '' ?>>Confession</option>
+                            <option value="blessing" <?= $type_filter === 'blessing' ? 'selected' : '' ?>>Blessing</option>
+                        </select>
+                        <?php if ($status_filter !== 'all' || $type_filter !== 'all' || !empty($search_query)): ?>
+                            <a href="appointments.php" style="padding:10px 16px; background:#f1f5f9; color:#475569; border-radius:10px; font-weight:600; text-decoration:none; display:flex; align-items:center; gap:8px;">
+                                <i class="fas fa-times"></i> Clear
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                    <a href="requestAppointments.php" class="btn-request">
+                        <i class="fas fa-plus"></i> Request New Appointment
+                    </a>
+                </form>
+
+                <!-- Active Filters Display -->
+                <?php if ($status_filter !== 'all' || $type_filter !== 'all' || !empty($search_query)): ?>
+                    <div style="margin-bottom:20px; padding:12px 16px; background:#f0f9ff; border-radius:12px; border-left:4px solid var(--green);">
+                        <strong>Active Filters:</strong>
+                        <?php if ($status_filter !== 'all'): ?>
+                            <span class="status-badge status-<?= $status_filter ?>" style="margin-left:10px;">
+                                Status: <?= ucwords($status_filter) ?>
+                            </span>
+                        <?php endif; ?>
+                        <?php if ($type_filter !== 'all'): ?>
+                            <span style="background:#dbeafe; padding:4px 8px; border-radius:6px; margin-left:10px;">
+                                Type: <?= ucwords(str_replace('_', ' ', $type_filter)) ?>
+                            </span>
+                        <?php endif; ?>
+                        <?php if (!empty($search_query)): ?>
+                            <span style="background:#fef3c7; padding:4px 8px; border-radius:6px; margin-left:10px;">
+                                Search: "<?= htmlspecialchars($search_query) ?>"
+                            </span>
+                        <?php endif; ?>
+                        <span style="margin-left:10px; color:#64748b; font-size:14px;">
+                            Showing <?= count($appointments) ?> appointment(s)
+                        </span>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Appointments List -->
                 <div class="appointments-grid">
                     <?php if (empty($appointments)): ?>
-                        <div style="text-align:center; padding:100px 20px; background:white; border-radius:20px; color:#94a3b8;">
-                            <i class="fas fa-calendar-times" style="font-size:48px; margin-bottom:16px; color:#cbd5e1;"></i>
-                            <p style="font-size:18px;">No appointment requests found.</p>
+                        <div class="empty-state">
+                            <i class="fas fa-calendar-times"></i>
+                            <h3>No appointments found</h3>
+                            <p>
+                                <?php if ($status_filter !== 'all' || $type_filter !== 'all' || !empty($search_query)): ?>
+                                    Try adjusting your filters or search criteria.
+                                <?php else: ?>
+                                    You haven't made any appointment requests yet.
+                                <?php endif; ?>
+                            </p>
+                            <a href="requestAppointments.php" class="btn-request" style="display:inline-flex;">
+                                <i class="fas fa-plus"></i> Request Your First Appointment
+                            </a>
                         </div>
                     <?php else: ?>
-                        <?php foreach ($appointments as $ap): ?>
+                        <?php foreach ($appointments as $ap): 
+                            $can_cancel = $ap['status'] === 'pending' || $ap['status'] === 'approved';
+                            $is_past = strtotime($ap['preferred_datetime']) < time();
+                        ?>
                             <div class="appointment-card">
                                 <div class="card-header">
-                                    <img src="<?= $ap['profile_pic'] ? '../uploads/'.$ap['profile_pic'] : 'https://via.placeholder.com/52/059669/ffffff?text='.substr($ap['requester_name'],0,1) ?>" alt="User">
-                                    <div>
+                                    <img src="<?= $ap['profile_pic'] ? '../uploads/profile_pics/'.$ap['profile_pic'] : 'https://via.placeholder.com/52/059669/ffffff?text='.substr($ap['requester_name'],0,1) ?>" alt="User">
+                                    <div style="flex:1;">
                                         <h4 style="margin:0; font-size:17px; font-weight:600; color:#1e293b;">
                                             <?= htmlspecialchars($ap['requester_name']) ?>
                                         </h4>
@@ -225,7 +475,7 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             <?= ucfirst($ap['type']) ?> • <?= date('M j, Y', strtotime($ap['preferred_datetime'])) ?>
                                         </small>
                                     </div>
-                                    <div style="margin-left:auto;">
+                                    <div>
                                         <span class="status-badge status-<?= htmlspecialchars($ap['status']) ?>">
                                             <?= ucwords(str_replace('_', ' ', $ap['status'])) ?>
                                         </span>
@@ -234,18 +484,28 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                 <div style="padding:24px;">
                                     <div class="detail-row">
-                                        <span class="detail-label">Type</span>
-                                        <span class="detail-value"><?= ucfirst($ap['type']) ?></span>
+                                        <span class="detail-label">Appointment Type</span>
+                                        <span class="detail-value"><?= ucwords(str_replace('_', ' ', $ap['type'])) ?></span>
                                     </div>
                                     <div class="detail-row">
                                         <span class="detail-label">Chapel/Parish</span>
-                                        <span class="detail-value"><?= ucfirst(str_replace('_', ' ', $ap['chapel'])) ?></span>
+                                        <span class="detail-value"><?= ucwords(str_replace('_', ' ', $ap['chapel'])) ?></span>
                                     </div>
                                     <div class="detail-row">
                                         <span class="detail-label">Preferred Date & Time</span>
                                         <span class="detail-value">
-                                            <?= date('F j, Y \a\t g:i A', strtotime($ap['preferred_datetime'])) ?>
+                                            <i class="far fa-calendar"></i> <?= date('F j, Y', strtotime($ap['preferred_datetime'])) ?>
+                                            <i class="far fa-clock" style="margin-left:10px;"></i> <?= date('g:i A', strtotime($ap['preferred_datetime'])) ?>
+                                            <?php if ($is_past): ?>
+                                                <span style="color:#f59e0b; margin-left:10px;">
+                                                    <i class="fas fa-exclamation-circle"></i> Past appointment
+                                                </span>
+                                            <?php endif; ?>
                                         </span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span class="detail-label">Submitted On</span>
+                                        <span class="detail-value"><?= date('M j, Y g:i A', strtotime($ap['requested_at'])) ?></span>
                                     </div>
                                     <?php if ($ap['priest']): ?>
                                     <div class="detail-row">
@@ -255,29 +515,40 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <?php endif; ?>
                                     <?php if ($ap['purpose']): ?>
                                     <div class="notes-section">
-                                        <div class="notes-title">Purpose / Intention</div>
-                                        <div class="notes-text">
-                                            <?= nl2br(htmlspecialchars($ap['purpose'])) ?>
-                                        </div>
+                                        <div class="notes-title"><i class="fas fa-bullseye"></i> Purpose / Intention</div>
+                                        <div class="notes-text"><?= nl2br(htmlspecialchars($ap['purpose'])) ?></div>
                                     </div>
                                     <?php endif; ?>
                                     <?php if ($ap['notes']): ?>
                                     <div class="notes-section">
-                                        <div class="notes-title">Additional Notes</div>
+                                        <div class="notes-title"><i class="fas fa-sticky-note"></i> Additional Notes</div>
                                         <div class="notes-text"><?= nl2br(htmlspecialchars($ap['notes'])) ?></div>
                                     </div>
                                     <?php endif; ?>
                                     <?php if ($ap['address']): ?>
-                                    <div class="detail-row">
-                                        <span class="detail-label">Address (Blessing/Visit)</span>
-                                        <span class="detail-value"><?= htmlspecialchars($ap['address']) ?></span>
+                                    <div class="notes-section">
+                                        <div class="notes-title"><i class="fas fa-map-marker-alt"></i> Address (Blessing/Visit)</div>
+                                        <div class="notes-text"><?= htmlspecialchars($ap['address']) ?></div>
                                     </div>
                                     <?php endif; ?>
 
-                                    <div style="margin-top:24px;">
-                                        <button class="btn-view-details">
-                                            <i class="fas fa-eye"></i> View Full Details
+                                    <div class="card-actions">
+                                        <button class="btn-view-details" onclick="viewAppointment(<?= $ap['id'] ?>)">
+                                            <i class="fas fa-eye"></i> View Details
                                         </button>
+                                        <?php if ($can_cancel && !$is_past): ?>
+                                            <form method="POST" action="" style="flex:1;" onsubmit="return confirm('Are you sure you want to cancel this appointment?')">
+                                                <input type="hidden" name="action" value="cancel">
+                                                <input type="hidden" name="appointment_id" value="<?= $ap['id'] ?>">
+                                                <button type="submit" class="btn-cancel">
+                                                    <i class="fas fa-times"></i> Cancel Appointment
+                                                </button>
+                                            </form>
+                                        <?php else: ?>
+                                            <button class="btn-cancel" disabled>
+                                                <i class="fas fa-times"></i> Cancel Appointment
+                                            </button>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
@@ -286,34 +557,130 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </div>
             </div>
 
-            <!-- RIGHT SIDEBAR - RECENT ACTIVITY -->
+            <!-- RIGHT SIDEBAR -->
             <div class="right-sidebar">
-                <h3 style="color:#065f46; font-size:21px; margin-bottom:20px;">Recent Requests</h3>
-                <?php foreach (array_slice($appointments, 0, 7) as $ap): ?>
-                    <div style="display:flex; justify-content:space-between; padding:14px 0; border-bottom:1px solid #f1f5f9;">
-                        <div style="display:flex; gap:12px; align-items:center;">
-                            <i class="fas fa-church" style="color:var(--green); font-size:20px;"></i>
-                            <div>
-                                <div style="font-weight:600; font-size:14px; color:#1e293b;">
-                                    <?= htmlspecialchars($ap['requester_name']) ?>
+                <h3 style="color:#065f46; font-size:21px; margin-bottom:20px; display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-calendar-check"></i> Upcoming Appointments
+                    <span style="font-size:14px; color:#64748b; font-weight:normal;">(Approved)</span>
+                </h3>
+                
+                <?php if (!empty($upcoming_appointments)): ?>
+                    <?php foreach ($upcoming_appointments as $up): 
+                        $date = new DateTime($up['preferred_datetime']);
+                        $is_today = $date->format('Y-m-d') === date('Y-m-d');
+                        $is_tomorrow = $date->format('Y-m-d') === date('Y-m-d', strtotime('+1 day'));
+                    ?>
+                        <div style="display:flex; justify-content:space-between; padding:14px 0; border-bottom:1px solid #f1f5f9; align-items:center;">
+                            <div style="display:flex; gap:12px; align-items:center;">
+                                <div style="width:40px; height:40px; border-radius:10px; background:var(--light-green); display:flex; align-items:center; justify-content:center;">
+                                    <i class="fas fa-church" style="color:var(--green); font-size:18px;"></i>
                                 </div>
-                                <small style="color:#64748b;">
-                                    <?= date('M j, Y • g:i A', strtotime($ap['preferred_datetime'])) ?>
-                                </small>
+                                <div>
+                                    <div style="font-weight:600; font-size:14px; color:#1e293b;">
+                                        <?= htmlspecialchars($up['fullname']) ?>
+                                    </div>
+                                    <small style="color:#64748b; display:block;">
+                                        <?php if ($is_today): ?>
+                                            <span style="color:#059669; font-weight:600;">Today</span>
+                                        <?php elseif ($is_tomorrow): ?>
+                                            <span style="color:#f59e0b; font-weight:600;">Tomorrow</span>
+                                        <?php else: ?>
+                                            <i class="far fa-calendar"></i> <?= $date->format('M j') ?>
+                                        <?php endif; ?>
+                                        <i class="far fa-clock" style="margin-left:10px;"></i> <?= $date->format('g:i A') ?>
+                                    </small>
+                                </div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:13px; font-weight:600; color:#059669;">
+                                    <?= ucfirst($up['type']) ?>
+                                </div>
+                                <span class="status-badge status-approved" style="font-size:11px; padding:4px 10px;">
+                                    Approved
+                                </span>
                             </div>
                         </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:13px; font-weight:600; color:#059669;">
-                                <?= ucfirst($ap['type']) ?>
-                            </div>
-                            <span class="status-badge status-<?= $ap['status'] ?>" style="font-size:11px; padding:4px 10px;">
-                                <?= ucfirst($ap['status']) ?>
-                            </span>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div style="text-align:center; padding:40px 20px; color:#94a3b8;">
+                        <i class="fas fa-calendar-plus" style="font-size:48px; margin-bottom:16px; opacity:0.3;"></i>
+                        <p>No upcoming appointments</p>
+                    </div>
+                <?php endif; ?>
+                
+                <!-- Quick Stats -->
+                <div style="margin-top:30px; padding-top:20px; border-top:1px solid #f1f5f9;">
+                    <h4 style="color:#065f46; font-size:16px; margin-bottom:15px; display:flex; align-items:center; gap:8px;">
+                        <i class="fas fa-chart-bar"></i> Quick Stats
+                    </h4>
+                    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:12px;">
+                        <div style="background:#f8fafc; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:20px; font-weight:700; color:var(--green);"><?= $stats['total'] ?? 0 ?></div>
+                            <div style="font-size:12px; color:#64748b;">Total Requests</div>
+                        </div>
+                        <div style="background:#f8fafc; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:20px; font-weight:700; color:#f59e0b;"><?= $stats['pending'] ?? 0 ?></div>
+                            <div style="font-size:12px; color:#64748b;">Pending Review</div>
+                        </div>
+                        <div style="background:#f8fafc; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:20px; font-weight:700; color:var(--green);"><?= $stats['approved'] ?? 0 ?></div>
+                            <div style="font-size:12px; color:#64748b;">Approved</div>
+                        </div>
+                        <div style="background:#f8fafc; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:20px; font-weight:700; color:#ec4899;"><?= count($upcoming_appointments) ?></div>
+                            <div style="font-size:12px; color:#64748b;">Upcoming</div>
                         </div>
                     </div>
-                <?php endforeach; ?>
+                </div>
+                
+                <!-- Help Tips -->
+                <div style="margin-top:30px; padding:16px; background:#f0f9ff; border-radius:12px; border-left:4px solid var(--green);">
+                    <h5 style="color:#065f46; font-size:14px; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-lightbulb"></i> Appointment Tips
+                    </h5>
+                    <ul style="color:#64748b; font-size:13px; padding-left:20px; margin:0;">
+                        <li>Request appointments at least 3 days in advance</li>
+                        <li>Check status regularly for updates</li>
+                        <li>Cancel appointments you can't attend</li>
+                        <li>Contact parish office for urgent requests</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
+
+    <script>
+        function viewAppointment(id) {
+            // You can implement a modal or redirect to view appointment details
+            alert('Viewing appointment details for ID: ' + id + '\n\nFeature coming soon!');
+            // window.location.href = 'view_appointment.php?id=' + id;
+        }
+
+        // Auto-hide success message after 5 seconds
+        setTimeout(function() {
+            const alerts = document.querySelectorAll('.alert-success');
+            alerts.forEach(alert => {
+                if (alert.style.display !== 'none') {
+                    alert.style.transition = 'opacity 0.5s';
+                    alert.style.opacity = '0';
+                    setTimeout(() => alert.style.display = 'none', 500);
+                }
+            });
+        }, 5000);
+
+        // Highlight today's appointments
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            const appointments = document.querySelectorAll('.appointment-card');
+            
+            appointments.forEach(appointment => {
+                const dateText = appointment.querySelector('.detail-value')?.textContent;
+                if (dateText && dateText.includes(today.replace(/-/g, ' '))) {
+                    appointment.style.border = '2px solid #059669';
+                    appointment.style.boxShadow = '0 10px 30px rgba(5, 150, 105, 0.2)';
+                }
+            });
+        });
+    </script>
 </body>
 </html>

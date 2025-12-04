@@ -589,7 +589,7 @@ $announcements = $pdo->query("
                 <a href="appointments.php"><div class="nav-item"><i class="fas fa-clock"></i> Appointments</div></a>
                 <a href="financial.php"><div class="nav-item"><i class="fas fa-coins"></i> Financial</div></a>
                 <a href="profile.php"><div class="nav-item"><i class="fas fa-user"></i> My Profile</div></a>
-                <div class="nav-item"><i class="fas fa-question-circle"></i> Help & Support</div>
+                <a href="support.php"><div class="nav-item"><i class="fas fa-question-circle"></i> Help & Support</div></a>
             </div>
         </div>
 

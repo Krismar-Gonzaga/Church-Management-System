@@ -3,13 +3,13 @@ session_start();
 require_once '../Database/DBconnection.php';
 
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header('Location: ../Staff/login.php');
+    header('Location: ../login.php');
     exit;
 }
 
 // Ensure only administrators can access
 if (($_SESSION['role'] ?? '') !== 'admin') {
-    header('Location: ../Staff/login.php');
+    header('Location: ../login.php');
     exit;
 }
 

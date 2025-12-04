@@ -3,17 +3,17 @@ session_start();
 require_once '../Database/DBconnection.php';
 
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header('Location: login.php');
+    header('Location: ../login.php');
     exit;
 }
 
-// Ensure only staff/admin/finance can access
-if (!in_array($_SESSION['role'] ?? '', ['admin', 'staff', 'finance'])) {
-    header('Location: login.php');
+// Ensure only administrators can access
+if (($_SESSION['role'] ?? '') !== 'priest') {
+    header('Location: ../login.php');
     exit;
 }
 
-$user_fullname = $_SESSION['user'] ?? 'Staff';
+$user_fullname = $_SESSION['user'] ?? 'Priest';
 
 // Auto-create financial_transactions table if it doesn't exist
 try {
@@ -249,30 +249,70 @@ foreach ($transactions as $t) {
     <!-- HEADER -->
     <div class="top-header">
         <div class="header-left">
-            <i class="fas fa-arrow-left" style="font-size: 20px; color: #64748b; cursor: pointer;"></i>
+            <img src="../images/logo.png" alt="SJPL Logo" class="logo-img">
+            <h3 class="parish-name">San Jose Parish Laligan</h3 >
         </div>
+        <style>
+                .parish-name {
+                    font-size: 22px;
+                    color: #065f46;
+                    font-weight: 700;
+                }
+        </style>
         <div class="header-search">
-            <div class="search-box">
-                <i class="fas fa-search search-icon"></i>
-                <input type="text" placeholder="Search">
-                <i class="fas fa-microphone search-mic"></i>
-            </div>
+            <form action="search.php" method="GET" style="width:100%; max-width:500px;">
+                <div class="search-box">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" name="q" placeholder="Search announcements, members, appointments..." required>
+                </div>
+            </form>
         </div>
+
+        
         <div class="header-right">
-            <div class="notification-bell"><i class="fas fa-bell"></i><span class="badge">1</span></div>
-            <i class="fas fa-chevron-down" style="color: #64748b; cursor: pointer;"></i>
-            <span style="font-weight: 600; color: #1e293b;"><?= htmlspecialchars($user_fullname) ?></span>
-            <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User" style="width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--green);">
+            <div class="notification-bell">
+                <i class="fas fa-bell"></i>
+                <span class="badge">3</span>
+            </div>
+            <a href="../logout.php" style="text-decoration: none;">
+            <div class="user-profile">
+                <span><?= htmlspecialchars($user_fullname) ?></span>
+                <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User">
+                <i class="fas fa-sign-out-alt"></i>
+            </div>
+            </a>
         </div>
+        <script>
+            // Toggle dropdown menu
+            function toggleDropdown() {
+                const dropdown = document.getElementById('userDropdown');
+                dropdown.classList.toggle('show');
+            }
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('userDropdown');
+                const profileContainer = document.querySelector('.user-profile-container');
+                
+                if (!profileContainer.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+
+            // Close dropdown on Escape key
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    document.getElementById('userDropdown').classList.remove('show');
+                }
+            });
+        </script>
     </div>
 
     <!-- MAIN LAYOUT -->
     <div class="main-layout">
         <!-- SIDEBAR -->
         <div class="sidebar">
-            <div class="logo">
-                <img src="../images/logo.png" alt="SJPL Logo">
-            </div>
+            
             <div class="nav-menu">
                 <a href="dashboard.php" style="text-decoration:none; color:inherit;"><div class="nav-item"><i class="fas fa-th-large"></i> Dashboard</div></a>
                 <a href="announcements.php" style="text-decoration:none; color:inherit;"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>
@@ -289,7 +329,6 @@ foreach ($transactions as $t) {
         <div class="content-area">
             <div class="page-header">
                 <h1 class="page-title">Financial</h1>
-                <a href="financial_management.php" ><button class="page-btn" style="padding:10px 20px; background:var(--green); color:white; border:none; border-radius:8px; cursor:pointer; font-weight:600;">Add Transaction</button></a>
                 <div class="page-dots">
                     <div class="page-dot active"></div>
                     <div class="page-dot"></div>

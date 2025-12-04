@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once '../Database/DBconnection.php'; // This connects to your sjpl_church database
+require_once 'Database/DBconnection.php';
 
 $error = '';
 
@@ -12,7 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Please fill in all fields";
     } else {
         try {
-            // Check if user exists (email or phone)
+            // Check if user exists with any role
             $stmt = $pdo->prepare("SELECT id, fullname, password, role FROM users WHERE email = ? LIMIT 1");
             $stmt->execute([$email]);
             $user = $stmt->fetch();
@@ -24,8 +24,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user']     = $user['fullname'];
                 $_SESSION['role']     = $user['role'];
 
-                // Redirect to dashboard
-                header('Location: dashboard.php');
+                // Redirect based on role
+                switch ($user['role']) {
+                    case 'admin':
+                        header('Location: Admin/dashboard.php');
+                        break;
+                    case 'staff':
+                        header('Location: Staff/dashboard.php');
+                        break;
+                    case 'priest':
+                        header('Location: Priest/dashboard.php');
+                        break;
+                    case 'member':
+                        header('Location: Member/dashboard.php');
+                        break;
+                    default:
+                        header('Location: login.php');
+                }
                 exit;
             } else {
                 $error = "Invalid email or password";
@@ -153,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 12px;
             margin-bottom: 12px;
             border: 1px solid #ddd;
-            border-radius:  douze;
+            border-radius: 12px;
             background: #fff;
             cursor: pointer;
             font-size: 15px;
@@ -175,6 +190,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .error {
             background: #fee2e2;
             color: #991b1b;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 14px;
+        }
+        .role-info {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #166534;
             padding: 12px;
             border-radius: 8px;
             margin-bottom: 20px;
@@ -206,6 +231,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if (!empty($error)): ?>
             <div class="error"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
+
+        <div class="role-info">
+            <strong>Login as:</strong><br>
+            • Priest: Access priest dashboard<br>
+            • Member: Access member portal<br>
+            • Admin/Staff: Access admin dashboard
+        </div>
 
         <form method="POST" action="">
             <div class="input-group">
@@ -241,7 +273,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <!-- Right: Decorative Side -->
-    <div class="right"></div>
+    <div class="right">
+        <div style="position: relative; z-index: 1; color: white; text-align: center; padding: 20px;">
+            <h2 style="font-size: 36px; margin-bottom: 20px;">Welcome Back!</h2>
+            <p style="font-size: 18px; margin-bottom: 10px;">Different roles, same community.</p>
+            <p style="font-size: 16px; opacity: 0.9;">Login to access your personalized dashboard.</p>
+        </div>
+    </div>
 </div>
 
 </body>

@@ -3,39 +3,149 @@ session_start();
 require_once '../Database/DBconnection.php';
 
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header('Location: ../Staff/login.php');
+    header('Location: ../login.php');
     exit;
 }
 
 // Ensure only administrators can access
 if (($_SESSION['role'] ?? '') !== 'admin') {
-    header('Location: ../Staff/login.php');
+    header('Location: ../login.php');
     exit;
 }
 
 $user_fullname = $_SESSION['user'] ?? 'Administrator';
 
-// Sample events (replace with real DB query later)
-$events = [
-    ['date' => '2025-11-24', 'time' => '08:00', 'title' => 'Monday Wake-Up Hour', 'color' => '#dbeafe'],
-    ['date' => '2025-11-24', 'time' => '09:00', 'title' => 'All-Team Kickoff', 'color' => '#dbeafe'],
-    ['date' => '2025-11-24', 'time' => '10:00', 'title' => 'Financial Update', 'color' => '#dbeafe'],
-    ['date' => '2025-11-24', 'time' => '11:00', 'title' => 'New Employee Welcome Lunch', 'color' => '#fef3c7'],
-    ['date' => '2025-11-24', 'time' => '14:00', 'title' => 'Design Review', 'color' => '#dbeafe'],
-    ['date' => '2025-11-25', 'time' => '09:00', 'title' => 'Design Review: Acme Marketing', 'color' => '#dbeafe'],
-    ['date' => '2025-11-25', 'time' => '12:00', 'title' => 'Design System Kickoff Lunch', 'color' => '#fef3c7'],
-    ['date' => '2025-11-25', 'time' => '14:00', 'title' => 'Concept Design Review II', 'color' => '#dbeafe'],
-    ['date' => '2025-11-25', 'time' => '16:00', 'title' => 'Design Team Happy Hour', 'color' => '#fecaca'],
-    ['date' => '2025-11-26', 'time' => '09:00', 'title' => 'Webinar: Figma Tips', 'color' => '#dbeafe'],
-    ['date' => '2025-11-26', 'time' => '11:00', 'title' => 'Onboarding Presentation', 'color' => '#dbeafe'],
-    ['date' => '2025-11-26', 'time' => '13:00', 'title' => 'MVP Prioritization Workshop', 'color' => '#dbeafe'],
-    ['date' => '2025-11-27', 'time' => '09:00', 'title' => 'Coffee Chat', 'color' => '#dbeafe'],
-    ['date' => '2025-11-27', 'time' => '10:00', 'title' => 'Health Benefits Walkthrough', 'color' => '#e0e7ff'],
-    ['date' => '2025-11-27', 'time' => '12:00', 'title' => 'Marketing Meet-and-Greet', 'color' => '#dbeafe'],
-    ['date' => '2025-11-27', 'time' => '14:00', 'title' => 'Design Review', 'color' => '#dbeafe'],
-    ['date' => '2025-11-28', 'time' => '09:00', 'title' => 'Coffee Chat', 'color' => '#dbeafe'],
-    ['date' => '2025-11-28', 'time' => '14:00', 'title' => '1:1 with Heather', 'color' => '#fed7aa'],
-];
+// Get current date parameters
+$current_year = isset($_GET['year']) ? (int)$_GET['year'] : date('Y');
+$current_month = isset($_GET['month']) ? (int)$_GET['month'] : date('n');
+$current_day = isset($_GET['day']) ? (int)$_GET['day'] : date('j');
+
+// Calculate previous and next months
+$prev_month = $current_month - 1;
+$prev_year = $current_year;
+if ($prev_month < 1) {
+    $prev_month = 12;
+    $prev_year = $current_year - 1;
+}
+
+$next_month = $current_month + 1;
+$next_year = $current_year;
+if ($next_month > 12) {
+    $next_month = 1;
+    $next_year = $current_year + 1;
+}
+
+// Fetch all approved appointments for the current month
+$month_start = date('Y-m-01', mktime(0, 0, 0, $current_month, 1, $current_year));
+$month_end = date('Y-m-t', mktime(0, 0, 0, $current_month, 1, $current_year));
+
+// Get approved appointments
+$stmt = $pdo->prepare("
+    SELECT ar.*, u.fullname AS requester_name, u.phone, u.email,
+           DATE(ar.preferred_datetime) as appointment_date,
+           TIME(ar.preferred_datetime) as appointment_time
+    FROM appointment_requests ar 
+    JOIN users u ON ar.user_id = u.id 
+    WHERE ar.status = 'approved'
+    AND DATE(ar.preferred_datetime) BETWEEN ? AND ?
+    ORDER BY ar.preferred_datetime ASC
+");
+$stmt->execute([$month_start, $month_end]);
+$appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Group appointments by date
+$appointments_by_date = [];
+foreach ($appointments as $appointment) {
+    $date = $appointment['appointment_date'];
+    if (!isset($appointments_by_date[$date])) {
+        $appointments_by_date[$date] = [];
+    }
+    $appointments_by_date[$date][] = $appointment;
+}
+
+// Get appointment statistics
+$stats_stmt = $pdo->query("
+    SELECT 
+        COUNT(*) as total_approved,
+        COUNT(DISTINCT DATE(preferred_datetime)) as days_with_appointments,
+        MIN(DATE(preferred_datetime)) as first_appointment,
+        MAX(DATE(preferred_datetime)) as last_appointment
+    FROM appointment_requests 
+    WHERE status = 'approved'
+");
+$stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
+
+// Fetch today's appointments
+$today = date('Y-m-d');
+$today_stmt = $pdo->prepare("
+    SELECT ar.*, u.fullname 
+    FROM appointment_requests ar 
+    JOIN users u ON ar.user_id = u.id 
+    WHERE ar.status = 'approved'
+    AND DATE(ar.preferred_datetime) = ?
+    ORDER BY ar.preferred_datetime ASC
+    LIMIT 5
+");
+$today_stmt->execute([$today]);
+$today_appointments = $today_stmt->fetchAll();
+
+// Get appointment type distribution for current month
+$type_stmt = $pdo->prepare("
+    SELECT type, COUNT(*) as count
+    FROM appointment_requests 
+    WHERE status = 'approved'
+    AND DATE(preferred_datetime) BETWEEN ? AND ?
+    GROUP BY type
+    ORDER BY count DESC
+");
+$type_stmt->execute([$month_start, $month_end]);
+$type_distribution = $type_stmt->fetchAll();
+
+// Determine current view
+$view = isset($_GET['view']) ? $_GET['view'] : 'month';
+
+// Generate calendar days for month view
+if ($view === 'month') {
+    $first_day_of_month = date('w', strtotime($month_start));
+    $days_in_month = date('t', strtotime($month_start));
+    
+    $calendar_days = [];
+    $current_day_counter = 1;
+    
+    // Fill in blank days for previous month
+    for ($i = 0; $i < $first_day_of_month; $i++) {
+        $prev_day = date('j', strtotime("-$i days", strtotime($month_start)));
+        $calendar_days[] = [
+            'day' => $prev_day,
+            'current_month' => false,
+            'date' => date('Y-m-d', strtotime("-$i days", strtotime($month_start)))
+        ];
+    }
+    
+    // Current month days
+    for ($day = 1; $day <= $days_in_month; $day++) {
+        $date = sprintf('%04d-%02d-%02d', $current_year, $current_month, $day);
+        $calendar_days[] = [
+            'day' => $day,
+            'current_month' => true,
+            'date' => $date,
+            'appointments' => $appointments_by_date[$date] ?? [],
+            'is_today' => ($current_year == date('Y') && $current_month == date('n') && $day == date('j'))
+        ];
+    }
+    
+    // Fill in remaining days for next month
+    $total_cells = 42; // 6 weeks * 7 days
+    $remaining_cells = $total_cells - count($calendar_days);
+    for ($i = 1; $i <= $remaining_cells; $i++) {
+        $next_date = date('Y-m-d', strtotime("+$i days", strtotime($month_end)));
+        $calendar_days[] = [
+            'day' => date('j', strtotime($next_date)),
+            'current_month' => false,
+            'date' => $next_date
+        ];
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -67,7 +177,15 @@ $events = [
         .header-left { display: flex; align-items: center; gap: 22px; }
         .header-left img { height: 58px; }
         .header-left .priest-img { width: 54px; height: 54px; border-radius: 50%; border: 3px solid #059669; object-fit: cover; }
+        
+        .search-box { position: relative; }
+        .search-box input {
+            width: 100%; padding: 14px 48px; border: 2px solid #e2e8f0;
+            border-radius: 16px; background: #f8fafc; font-size: 15px; transition: all 0.3s;
+        }
+        .search-box input:focus { border-color: #059669; background: white; box-shadow: 0 8px 25px rgba(5,150,105,0.15); }
         .search-icon { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: #059669; }
+        
         .header-right { display: flex; align-items: center; gap: 20px; }
         .notification-bell { position: relative; font-size: 23px; color: #64748b; cursor: pointer; }
         .notification-bell .badge { position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; font-size: 10px; width: 19px; height: 19px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
@@ -108,14 +226,33 @@ $events = [
         .nav-item a { text-decoration: none; color: inherit; width: 100%; display: flex; align-items: center; gap: 14px; }
 
         /* Calendar Content */
-        .content-area {
-            margin-left: 260px; flex: 1; padding: 40px; background: #f1f5f9;
+        .content-wrapper {
+            margin-left: 260px; flex: 1; padding: 40px;
+            display: flex; gap: 40px;
         }
-        .page-title { font-size: 32px; font-weight: 700; margin-bottom: 30px; color: #1e293b; }
+        .main-calendar { flex: 2; }
+        .right-sidebar { width: 380px; flex-shrink: 0; }
+        
+        .page-title { font-size: 32px; font-weight: 700; margin-bottom: 20px; color: #1e293b; }
 
+        /* Stats Bar */
+        .stats-bar {
+            display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap;
+        }
+        .stat-card {
+            background: white; padding: 20px; border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06); min-width: 180px; flex: 1;
+        }
+        .stat-value {
+            font-size: 28px; font-weight: 700; margin-bottom: 8px; color: #059669;
+        }
+        .stat-label { font-size: 14px; color: #64748b; font-weight: 500; }
+
+        /* Calendar Container */
         .calendar-container {
             background: white; border-radius: 20px; overflow: hidden;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1); padding: 30px;
+            margin-bottom: 30px;
         }
         .calendar-header {
             display: flex; justify-content: space-between; align-items: center;
@@ -126,50 +263,180 @@ $events = [
         }
         .calendar-nav button {
             background: none; border: none; font-size: 24px; color: #64748b; cursor: pointer;
+            width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        }
+        .calendar-nav button:hover {
+            background: #f0fdf4; color: #059669;
+        }
+        .calendar-title {
+            font-size: 24px; font-weight: 700; color: #1e293b;
+            min-width: 250px; text-align: center;
         }
         .view-tabs {
-            display: flex; gap: 20px; font-weight: 600;
+            display: flex; gap: 10px; font-weight: 600;
         }
-        .view-tabs span {
-            padding: 8px 16px; border-radius: 10px; cursor: pointer;
+        .view-tabs a {
+            padding: 8px 16px; border-radius: 10px; cursor: pointer; text-decoration: none;
+            color: #64748b; transition: all 0.3s;
+        }
+        .view-tabs a:hover {
+            background: #f0fdf4; color: #059669;
         }
         .view-tabs .active {
-            background: #dc2626; color: white;
+            background: #059669 !important; color: white !important;
         }
+        .today-btn {
+            background: #059669; color: white; border: none; padding: 10px 20px;
+            border-radius: 10px; font-weight: 600; cursor: pointer; margin-left: 20px;
+        }
+        .today-btn:hover { background: #047857; }
 
-        /* Week View Table */
-        .week-calendar {
+        /* Month Calendar */
+        .month-calendar {
             width: 100%; border-collapse: collapse;
         }
-        .week-calendar th {
-            text-align: left; padding: 12px 10px; font-weight: 600; color: #64748b;
-            border-bottom: 2px solid #e2e8f0;
+        .month-calendar th {
+            text-align: center; padding: 15px 0; font-weight: 600; color: #64748b;
+            border-bottom: 2px solid #e2e8f0; font-size: 14px;
         }
-        .week-calendar td {
-            vertical-align: top; padding: 8px; width: 14.28%; height: 80px;
-            border: 1px solid #e2e8f0;
+        .month-calendar td {
+            vertical-align: top; padding: 12px 8px; width: 14.28%; height: 120px;
+            border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.3s;
+            position: relative;
         }
-        .time-label {
-            font-size: 13px; color: #64748b; text-align: right; padding-right: 12px;
+        .month-calendar td:hover {
+            background: #f8fff9;
         }
-        .day-header {
-            text-align: center; font-weight: 700; padding: 15px 0;
-            background: #f8fafc; color: #1e293b;
+        .month-calendar td.other-month {
+            background: #f8fafc; color: #cbd5e1;
         }
-        .event {
-            background: #dbeafe; color: #1e40af; padding: 6px 8px;
-            border-radius: 8px; font-size: 12px; margin: 4px 0;
-            cursor: pointer; transition: 0.3s; border-left: 4px solid #3b82f6;
+        .month-calendar td.today {
+            background: #f0fdf4; border: 2px solid #059669;
         }
-        .event:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-        .event.yellow { background: #fef3c7; color: #92400e; border-left-color: #f59e0b; }
-        .event.red { background: #fecaca; color: #991b1b; border-left-color: #ef4444; }
-        .event.orange { background: #fed7aa; color: #c2410c; border-left-color: #fb923c; }
+        .day-number {
+            font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 8px;
+        }
+        .other-month .day-number {
+            color: #cbd5e1; font-weight: 400;
+        }
+        .today .day-number {
+            color: #059669;
+        }
+        .event-count {
+            position: absolute; top: 8px; right: 8px; background: #059669;
+            color: white; font-size: 12px; width: 22px; height: 22px;
+            border-radius: 50%; display: flex; align-items: center;
+            justify-content: center; font-weight: 600;
+        }
+        .event-list {
+            margin-top: 5px; max-height: 70px; overflow-y: auto;
+        }
+        .event-item {
+            background: #dbeafe; color: #1e40af; padding: 4px 6px;
+            border-radius: 6px; font-size: 11px; margin: 2px 0;
+            border-left: 3px solid #3b82f6; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap;
+        }
+        .event-item.baptism { background: #d1fae5; color: #065f46; border-left-color: #059669; }
+        .event-item.wedding { background: #fce7f3; color: #be123c; border-left-color: #ec4899; }
+        .event-item.mass_intention { background: #fef3c7; color: #92400e; border-left-color: #f59e0b; }
+        .event-item.confession { background: #e0e7ff; color: #3730a3; border-left-color: #6366f1; }
+        .event-item.blessing { background: #f3e8ff; color: #6b21a8; border-left-color: #a855f7; }
 
-        @media (max-width: 1024px) {
-            .content-area { padding: 20px; }
-            .week-calendar { font-size: 12px; }
-            .event { font-size: 11px; padding: 4px; }
+        /* Right Sidebar */
+        .sidebar-section {
+            background: white; border-radius: 20px; padding: 24px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.08); margin-bottom: 24px;
+        }
+        .section-title {
+            font-size: 18px; font-weight: 700; color: #065f46;
+            margin-bottom: 20px; display: flex; align-items: center; gap: 10px;
+        }
+        .appointment-card {
+            background: #f8fafc; border-radius: 12px; padding: 16px;
+            margin-bottom: 12px; border-left: 4px solid #059669;
+        }
+        .appointment-time {
+            font-size: 13px; color: #64748b; margin-bottom: 5px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .appointment-name {
+            font-weight: 600; color: #1e293b; margin-bottom: 5px;
+        }
+        .appointment-type {
+            font-size: 12px; color: #059669; font-weight: 500;
+            background: #d1fae5; padding: 3px 8px; border-radius: 10px;
+            display: inline-block;
+        }
+        .empty-state {
+            text-align: center; padding: 40px 20px; color: #94a3b8;
+        }
+        .empty-state i { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+
+        /* Type Distribution */
+        .type-bar {
+            margin-bottom: 12px;
+        }
+        .type-label {
+            display: flex; justify-content: space-between; margin-bottom: 4px;
+            font-size: 14px; color: #475569;
+        }
+        .type-bar-container {
+            height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;
+        }
+        .type-bar-fill {
+            height: 100%; border-radius: 4px;
+        }
+        .baptism-fill { background: #059669; }
+        .wedding-fill { background: #ec4899; }
+        .mass_intention-fill { background: #f59e0b; }
+        .confession-fill { background: #6366f1; }
+        .blessing-fill { background: #a855f7; }
+
+        /* Modal */
+        .modal {
+            display: none; position: fixed; z-index: 2000;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background-color: white; margin: 5% auto; padding: 0;
+            border-radius: 20px; width: 90%; max-width: 600px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: modalSlideIn 0.3s ease;
+        }
+        @keyframes modalSlideIn {
+            from { opacity: 0; transform: translateY(-50px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .modal-header {
+            padding: 24px 30px; border-bottom: 1px solid #e2e8f0;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-header h2 { font-size: 24px; color: #065f46; font-weight: 700; }
+        .close-btn {
+            background: none; border: none; font-size: 28px; color: #64748b;
+            cursor: pointer; padding: 0; width: 32px; height: 32px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 8px; transition: 0.3s;
+        }
+        .close-btn:hover { background: #f1f5f9; color: #1e293b; }
+        .modal-body { padding: 30px; max-height: 400px; overflow-y: auto; }
+        .modal-footer {
+            padding: 20px 30px; border-top: 1px solid #e2e8f0;
+            display: flex; justify-content: flex-end; gap: 12px;
+        }
+        .appointment-detail {
+            margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #e2e8f0;
+        }
+        .detail-label { font-weight: 600; color: #64748b; font-size: 14px; margin-bottom: 5px; }
+        .detail-value { color: #1e293b; font-size: 15px; }
+
+        @media (max-width: 1200px) {
+            .content-wrapper { flex-direction: column; padding: 20px; }
+            .right-sidebar { width: 100%; }
+            .stats-bar { flex-direction: column; }
+            .month-calendar td { height: 100px; }
         }
     </style>
 </head>
@@ -179,70 +446,18 @@ $events = [
     <div class="top-header">
         <div class="header-left">
             <img src="../images/logo.png" alt="SJPL Logo">
-            <h3 class="parish-name">San Jose Parish Laligan</h3 >
-            <style>
-                .parish-name {
-                    font-size: 22px;
-                    color: #065f46;
-                    font-weight: 700;
-                }
-            </style>
+            <h3 style="color:#065f46; font-size:24px; font-weight:700;">San Jose Parish Laligan</h3>
         </div>
-        <!-- SEARCH BAR (CENTERED) -->
-         <style>
-            /* SEARCH BAR STYLES */
-            .header-search {
-                flex: 1;
-                margin-right: 20px;
-                display: flex;
-                justify-content: right;
-                padding: 0 30px;
-            }
-
-            .search-box {
-                position: relative;
-                width: 100%;
-                max-width: 500px;
-            }
-
-            .search-box input {
-                width: 100%;
-                padding: 14px 50px 14px 48px;
-                border: 2px solid #e2e8f0;
-                border-radius: 16px;
-                font-size: 15px;
-                background: #f8fafc;
-                outline: none;
-                transition: all 0.3s;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            }
-
-            .search-box input:focus {
-                border-color: #059669;
-                background: white;
-                box-shadow: 0 8px 25px rgba(5,150,105,0.15);
-            }
-
-            .search-icon {
-                position: absolute;
-                left: 18px;
-                top: 50%;
-                transform: translateY(-50%);
-                color: #059669;
-                font-size: 18px;
-                pointer-events: none;
-            }
-         </style>
         <div class="header-search">
-            <div class="search-box" style="position:relative;">
+            <div class="search-box">
                 <i class="fas fa-search search-icon"></i>
-                <input type="text" placeholder="Search events, masses, appointments...">
+                <input type="text" id="calendarSearch" placeholder="Search approved appointments..." onkeyup="searchAppointments()">
             </div>
         </div>
         <div class="header-right">
             <div class="notification-bell">
                 <i class="fas fa-bell"></i>
-                <span class="badge">3</span>
+                <span class="badge"><?= count($today_appointments) ?></span>
             </div>
             <div class="user-profile">
                 <span><?= htmlspecialchars($user_fullname) ?></span>
@@ -256,7 +471,6 @@ $events = [
     <div class="main-layout">
         <!-- Sidebar -->
         <div class="sidebar">
-            
             <div class="nav-menu">
                 <a href="dashboard.php"><div class="nav-item"><i class="fas fa-tachometer-alt"></i> Dashboard</div></a>
                 <a href="announcements.php"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>
@@ -269,71 +483,407 @@ $events = [
             </div>
         </div>
 
-        <!-- Calendar Content -->
-        <div class="content-area">
-            <h1 class="page-title">Calendar</h1>
+        <!-- Main Content -->
+        <div class="content-wrapper">
+            <div class="main-calendar">
+                <h1 class="page-title">Appointments Calendar</h1>
 
-            <div class="calendar-container">
-                <div class="calendar-header">
-                    <div class="calendar-nav">
-                        <button><i class="fas fa-chevron-left"></i></button>
-                        <h2>November 23 – 29, 2025</h2>
-                        <button><i class="fas fa-chevron-right"></i></button>
-                        <button style="margin-left:20px; color:#059669; font-weight:600;">Today</button>
+                <!-- Statistics -->
+                <div class="stats-bar">
+                    <div class="stat-card">
+                        <div class="stat-value"><?= $stats['total_approved'] ?? 0 ?></div>
+                        <div class="stat-label">Total Approved Appointments</div>
                     </div>
-                    <div class="view-tabs">
-                        <span>Day</span>
-                        <span class="active">Week</span>
-                        <span>Month</span>
-                        <span>Year</span>
+                    <div class="stat-card">
+                        <div class="stat-value"><?= count($appointments) ?></div>
+                        <div class="stat-label">Appointments This Month</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value"><?= count($appointments_by_date) ?></div>
+                        <div class="stat-label">Busy Days This Month</div>
                     </div>
                 </div>
 
-                <table class="week-calendar">
-                    <thead>
-                        <tr>
-                            <th></th>
-                            <th class="day-header">Sun<br>23</th>
-                            <th class="day-header">Mon<br>24</th>
-                            <th class="day-header">Tue<br>25</th>
-                            <th class="day-header">Wed<br>26</th>
-                            <th class="day-header">Thu<br>27</th>
-                            <th class="day-header">Fri<br>28</th>
-                            <th class="day-header">Sat<br>29</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        $times = ['7:00 AM','8:00 AM','9:00 AM','10:00 AM','11:00 AM','12:00 PM','1:00 PM','2:00 PM','3:00 PM','4:00 PM','5:00 PM'];
-                        foreach ($times as $time):
-                            $hour = str_replace([' AM',' PM'], '', $time);
-                            $hour = $hour . (strpos($time, 'PM') !== false && $hour != '12' ? ' PM' : ' AM');
-                        ?>
-                        <tr>
-                            <td class="time-label"><?= $time ?></td>
-                            <?php for($d=23; $d<=29; $d++): ?>
-                                <td>
-                                    <?php
-                                    foreach($events as $e):
-                                        if(date('Y-m-d', strtotime("2025-11-$d")) == $e['date'] && $e['time'] == str_replace([' AM',' PM'], [':00 AM',':00 PM'], $time)):
+                <!-- Calendar Container -->
+                <div class="calendar-container">
+                    <div class="calendar-header">
+                        <div class="calendar-nav">
+                            <a href="?view=<?= $view ?>&year=<?= $prev_year ?>&month=<?= $prev_month ?>">
+                                <button><i class="fas fa-chevron-left"></i></button>
+                            </a>
+                            <div class="calendar-title">
+                                <?= date('F Y', mktime(0, 0, 0, $current_month, 1, $current_year)) ?>
+                            </div>
+                            <a href="?view=<?= $view ?>&year=<?= $next_year ?>&month=<?= $next_month ?>">
+                                <button><i class="fas fa-chevron-right"></i></button>
+                            </a>
+                            <a href="calendar.php">
+                                <button class="today-btn">Today</button>
+                            </a>
+                        </div>
+                        <div class="view-tabs">
+                            <a href="?view=month&year=<?= $current_year ?>&month=<?= $current_month ?>" class="<?= $view === 'month' ? 'active' : '' ?>">Month</a>
+                            <a href="#" onclick="alert('Week view coming soon!')">Week</a>
+                            <a href="#" onclick="alert('Day view coming soon!')">Day</a>
+                        </div>
+                    </div>
+
+                    <?php if ($view === 'month'): ?>
+                    <table class="month-calendar">
+                        <thead>
+                            <tr>
+                                <th>Sun</th>
+                                <th>Mon</th>
+                                <th>Tue</th>
+                                <th>Wed</th>
+                                <th>Thu</th>
+                                <th>Fri</th>
+                                <th>Sat</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php for ($week = 0; $week < 6; $week++): ?>
+                                <tr>
+                                    <?php for ($day = 0; $day < 7; $day++): 
+                                        $index = $week * 7 + $day;
+                                        if ($index >= count($calendar_days)) break;
+                                        $day_data = $calendar_days[$index];
+                                        $is_today = $day_data['is_today'] ?? false;
+                                        $appointment_count = count($day_data['appointments'] ?? []);
                                     ?>
-                                    <div class="event <?= isset($e['color']) ? '' : 'blue' ?>"
-                                         style="background:<?= $e['color'] ?? '#dbeafe' ?>; border-left-color:<?= $e['color'] == '#fef3c7' ? '#f59e0b' : ($e['color'] == '#fecaca' ? '#ef4444' : ($e['color'] == '#fed7aa' ? '#fb923c' : '#3b82f6')) ?>">
-                                        <?= htmlspecialchars($e['title']) ?>
-                                    </div>
-                                    <?php
-                                        endif;
-                                    endforeach;
-                                    ?>
-                                </td>
+                                    <td class="<?= !$day_data['current_month'] ? 'other-month' : '' ?> <?= $is_today ? 'today' : '' ?>" 
+                                        onclick="viewDayAppointments('<?= $day_data['date'] ?>', <?= $appointment_count ?>)">
+                                        <div class="day-number"><?= $day_data['day'] ?></div>
+                                        <?php if ($appointment_count > 0): ?>
+                                            <div class="event-count"><?= $appointment_count ?></div>
+                                            <div class="event-list">
+                                                <?php foreach (array_slice($day_data['appointments'] ?? [], 0, 3) as $appt): ?>
+                                                    <div class="event-item <?= $appt['type'] ?>" 
+                                                         title="<?= htmlspecialchars($appt['requester_name']) ?> - <?= date('g:i A', strtotime($appt['appointment_time'])) ?>">
+                                                        <?= date('g:i', strtotime($appt['appointment_time'])) ?> - <?= htmlspecialchars($appt['requester_name']) ?>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                                <?php if ($appointment_count > 3): ?>
+                                                    <div class="event-item" style="background:#f3f4f6; color:#6b7280; border-left-color:#9ca3af;">
+                                                        +<?= $appointment_count - 3 ?> more
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <?php endfor; ?>
+                                </tr>
                             <?php endfor; ?>
-                        </tr>
+                        </tbody>
+                    </table>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Right Sidebar -->
+            <div class="right-sidebar">
+                <!-- Today's Appointments -->
+                <div class="sidebar-section">
+                    <h3 class="section-title"><i class="fas fa-calendar-day"></i> Today's Appointments</h3>
+                    <?php if (!empty($today_appointments)): ?>
+                        <?php foreach ($today_appointments as $appt): ?>
+                            <div class="appointment-card" onclick="viewAppointmentDetails(<?= $appt['id'] ?>)">
+                                <div class="appointment-time">
+                                    <i class="far fa-clock"></i> <?= date('g:i A', strtotime($appt['preferred_datetime'])) ?>
+                                </div>
+                                <div class="appointment-name"><?= htmlspecialchars($appt['fullname']) ?></div>
+                                <div class="appointment-type"><?= ucwords(str_replace('_', ' ', $appt['type'])) ?></div>
+                            </div>
                         <?php endforeach; ?>
-                    </tbody>
-                </table>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="fas fa-calendar-check"></i>
+                            <p>No appointments scheduled for today</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Appointment Type Distribution -->
+                <div class="sidebar-section">
+                    <h3 class="section-title"><i class="fas fa-chart-pie"></i> This Month's Distribution</h3>
+                    <?php if (!empty($type_distribution)): ?>
+                        <?php foreach ($type_distribution as $type): ?>
+                            <div class="type-bar">
+                                <div class="type-label">
+                                    <span><?= ucwords(str_replace('_', ' ', $type['type'])) ?></span>
+                                    <span><?= $type['count'] ?></span>
+                                </div>
+                                <div class="type-bar-container">
+                                    <div class="type-bar-fill <?= $type['type'] ?>-fill" 
+                                         style="width: <?= ($type['count'] / max(array_column($type_distribution, 'count'))) * 100 ?>%">
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="empty-state" style="padding:20px 0;">
+                            <i class="fas fa-chart-bar"></i>
+                            <p>No appointments this month</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="sidebar-section">
+                    <h3 class="section-title"><i class="fas fa-chart-line"></i> Calendar Stats</h3>
+                    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:15px;">
+                        <div style="text-align:center;">
+                            <div style="font-size:24px; font-weight:700; color:#059669;"><?= $stats['total_approved'] ?? 0 ?></div>
+                            <div style="font-size:12px; color:#64748b;">Total Approved</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:24px; font-weight:700; color:#f59e0b;"><?= $stats['days_with_appointments'] ?? 0 ?></div>
+                            <div style="font-size:12px; color:#64748b;">Busy Days</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:24px; font-weight:700; color:#6366f1;"><?= count($appointments_by_date) ?></div>
+                            <div style="font-size:12px; color:#64748b;">This Month</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:24px; font-weight:700; color:#ec4899;"><?= count($today_appointments) ?></div>
+                            <div style="font-size:12px; color:#64748b;">Today</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+
+    <!-- Day Appointments Modal -->
+    <div id="dayModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalDayTitle">Appointments</h2>
+                <button class="close-btn" onclick="closeDayModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="dayAppointmentsList">
+                <!-- Appointments will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeDayModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Appointment Details Modal -->
+    <div id="detailsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Appointment Details</h2>
+                <button class="close-btn" onclick="closeDetailsModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="appointmentDetails">
+                <!-- Details will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeDetailsModal()">Close</button>
+                <button class="btn-submit" onclick="window.location.href='appointments.php'">
+                    Manage Appointments
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Day appointments data
+        const dayAppointments = <?= json_encode($appointments_by_date) ?>;
+        const allAppointments = <?= json_encode($appointments) ?>;
+
+        function viewDayAppointments(date, count) {
+            if (count === 0) {
+                alert('No appointments scheduled for ' + date);
+                return;
+            }
+
+            const modalTitle = document.getElementById('modalDayTitle');
+            const appointmentsList = document.getElementById('dayAppointmentsList');
+            
+            const formattedDate = new Date(date).toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            
+            modalTitle.textContent = 'Appointments for ' + formattedDate;
+            
+            let html = '';
+            if (dayAppointments[date]) {
+                dayAppointments[date].forEach(appt => {
+                    const time = new Date(appt.preferred_datetime).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    
+                    html += `
+                        <div class="appointment-detail" onclick="viewAppointmentDetails(${appt.id})" style="cursor:pointer;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                <h3 style="color:#059669; font-size:16px;">${time}</h3>
+                                <span style="background:#d1fae5; color:#065f46; padding:3px 8px; border-radius:10px; font-size:12px;">
+                                    ${appt.type.replace(/_/g, ' ').toUpperCase()}
+                                </span>
+                            </div>
+                            <div class="detail-label">Requester</div>
+                            <div class="detail-value">${escapeHtml(appt.requester_name)}</div>
+                            <div class="detail-label">Purpose</div>
+                            <div class="detail-value">${appt.purpose ? escapeHtml(appt.purpose) : 'No purpose specified'}</div>
+                        </div>
+                    `;
+                });
+            } else {
+                html = '<div class="empty-state"><p>No appointments for this date</p></div>';
+            }
+            
+            appointmentsList.innerHTML = html;
+            document.getElementById('dayModal').style.display = 'block';
+        }
+
+        function viewAppointmentDetails(id) {
+            const appointment = allAppointments.find(a => a.id == id);
+            if (!appointment) return;
+
+            const detailsDiv = document.getElementById('appointmentDetails');
+            const time = new Date(appointment.preferred_datetime).toLocaleString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            detailsDiv.innerHTML = `
+                <div class="appointment-detail">
+                    <div class="detail-label">Date & Time</div>
+                    <div class="detail-value">${time}</div>
+                </div>
+                <div class="appointment-detail">
+                    <div class="detail-label">Requester Name</div>
+                    <div class="detail-value">${escapeHtml(appointment.requester_name)}</div>
+                </div>
+                <div class="appointment-detail">
+                    <div class="detail-label">Appointment Type</div>
+                    <div class="detail-value">${appointment.type.replace(/_/g, ' ').toUpperCase()}</div>
+                </div>
+                <div class="appointment-detail">
+                    <div class="detail-label">Chapel/Parish</div>
+                    <div class="detail-value">${appointment.chapel ? escapeHtml(appointment.chapel.replace(/_/g, ' ')) : 'Not specified'}</div>
+                </div>
+                ${appointment.priest ? `
+                <div class="appointment-detail">
+                    <div class="detail-label">Requested Priest</div>
+                    <div class="detail-value">${escapeHtml(appointment.priest.replace(/_/g, ' '))}</div>
+                </div>
+                ` : ''}
+                ${appointment.email ? `
+                <div class="appointment-detail">
+                    <div class="detail-label">Email</div>
+                    <div class="detail-value">${escapeHtml(appointment.email)}</div>
+                </div>
+                ` : ''}
+                ${appointment.phone ? `
+                <div class="appointment-detail">
+                    <div class="detail-label">Phone</div>
+                    <div class="detail-value">${escapeHtml(appointment.phone)}</div>
+                </div>
+                ` : ''}
+                ${appointment.purpose ? `
+                <div class="appointment-detail">
+                    <div class="detail-label">Purpose / Intention</div>
+                    <div class="detail-value" style="white-space:pre-wrap;">${escapeHtml(appointment.purpose)}</div>
+                </div>
+                ` : ''}
+                ${appointment.notes ? `
+                <div class="appointment-detail">
+                    <div class="detail-label">Additional Notes</div>
+                    <div class="detail-value" style="white-space:pre-wrap;">${escapeHtml(appointment.notes)}</div>
+                </div>
+                ` : ''}
+                ${appointment.address ? `
+                <div class="appointment-detail">
+                    <div class="detail-label">Address (Blessing/Visit)</div>
+                    <div class="detail-value">${escapeHtml(appointment.address)}</div>
+                </div>
+                ` : ''}
+                <div class="appointment-detail">
+                    <div class="detail-label">Submitted On</div>
+                    <div class="detail-value">${new Date(appointment.requested_at).toLocaleString()}</div>
+                </div>
+            `;
+
+            closeDayModal(); // Close day modal if open
+            document.getElementById('detailsModal').style.display = 'block';
+        }
+
+        function closeDayModal() {
+            document.getElementById('dayModal').style.display = 'none';
+        }
+
+        function closeDetailsModal() {
+            document.getElementById('detailsModal').style.display = 'none';
+        }
+
+        function searchAppointments() {
+            const searchTerm = document.getElementById('calendarSearch').value.toLowerCase();
+            const appointments = document.querySelectorAll('.event-item');
+            
+            appointments.forEach(appointment => {
+                const text = appointment.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    appointment.style.display = 'block';
+                    appointment.parentElement.parentElement.style.backgroundColor = '#f0fdf4';
+                } else {
+                    appointment.style.display = 'none';
+                    appointment.parentElement.parentElement.style.backgroundColor = '';
+                }
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            const dayModal = document.getElementById('dayModal');
+            const detailsModal = document.getElementById('detailsModal');
+            
+            if (event.target === dayModal) closeDayModal();
+            if (event.target === detailsModal) closeDetailsModal();
+        }
+
+        // Close modals on Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeDayModal();
+                closeDetailsModal();
+            }
+        });
+
+        // Highlight current date on load
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = '<?= date('Y-m-d') ?>';
+            const todayCell = document.querySelector(`td[onclick*="${today}"]`);
+            if (todayCell) {
+                todayCell.style.animation = 'pulse 2s infinite';
+                const style = document.createElement('style');
+                style.textContent = `
+                    @keyframes pulse {
+                        0% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.4); }
+                        70% { box-shadow: 0 0 0 10px rgba(5, 150, 105, 0); }
+                        100% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        });
+    </script>
 </body>
 </html>
-

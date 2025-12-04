@@ -7,13 +7,14 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     exit;
 }
 
-// Ensure only administrators can access
-if (($_SESSION['role'] ?? '') !== 'staff') {
+// Ensure only members can access (changed from 'member' check)
+if (($_SESSION['role'] ?? '') !== 'priest') {
     header('Location: ../login.php');
     exit;
 }
 
-$user_fullname = $_SESSION['user'] ?? 'Staff';
+$user_id = $_SESSION['user_id'] ?? 0; // Get member's user_id from session
+$user_fullname = $_SESSION['user'] ?? 'Priest';
 
 // Get current date parameters
 $current_year = isset($_GET['year']) ? (int)$_GET['year'] : date('Y');
@@ -35,22 +36,23 @@ if ($next_month > 12) {
     $next_year = $current_year + 1;
 }
 
-// Fetch all approved appointments for the current month
+// Fetch the member's appointments for the current month
 $month_start = date('Y-m-01', mktime(0, 0, 0, $current_month, 1, $current_year));
 $month_end = date('Y-m-t', mktime(0, 0, 0, $current_month, 1, $current_year));
 
-// Get approved appointments
+// MODIFIED QUERY: Only get appointments for the logged-in member
 $stmt = $pdo->prepare("
     SELECT ar.*, u.fullname AS requester_name, u.phone, u.email,
            DATE(ar.preferred_datetime) as appointment_date,
            TIME(ar.preferred_datetime) as appointment_time
     FROM appointment_requests ar 
     JOIN users u ON ar.user_id = u.id 
-    WHERE ar.status = 'approved'
+    WHERE ar.user_id = ?  -- Only show appointments for the logged-in member
+    AND ar.status = 'approved'
     AND DATE(ar.preferred_datetime) BETWEEN ? AND ?
     ORDER BY ar.preferred_datetime ASC
 ");
-$stmt->execute([$month_start, $month_end]);
+$stmt->execute([$user_id, $month_start, $month_end]);
 $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Group appointments by date
@@ -63,42 +65,46 @@ foreach ($appointments as $appointment) {
     $appointments_by_date[$date][] = $appointment;
 }
 
-// Get appointment statistics
-$stats_stmt = $pdo->query("
+// MODIFIED: Get appointment statistics for the member only
+$stats_stmt = $pdo->prepare("
     SELECT 
         COUNT(*) as total_approved,
         COUNT(DISTINCT DATE(preferred_datetime)) as days_with_appointments,
         MIN(DATE(preferred_datetime)) as first_appointment,
         MAX(DATE(preferred_datetime)) as last_appointment
     FROM appointment_requests 
-    WHERE status = 'approved'
+    WHERE user_id = ?  -- Only count member's appointments
+    AND status = 'approved'
 ");
+$stats_stmt->execute([$user_id]);
 $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
 
-// Fetch today's appointments
+// MODIFIED: Fetch today's appointments for the member only
 $today = date('Y-m-d');
 $today_stmt = $pdo->prepare("
     SELECT ar.*, u.fullname 
     FROM appointment_requests ar 
     JOIN users u ON ar.user_id = u.id 
-    WHERE ar.status = 'approved'
+    WHERE ar.user_id = ?  -- Only today's appointments for the member
+    AND ar.status = 'approved'
     AND DATE(ar.preferred_datetime) = ?
     ORDER BY ar.preferred_datetime ASC
     LIMIT 5
 ");
-$today_stmt->execute([$today]);
+$today_stmt->execute([$user_id, $today]);
 $today_appointments = $today_stmt->fetchAll();
 
-// Get appointment type distribution for current month
+// MODIFIED: Get appointment type distribution for current month (member only)
 $type_stmt = $pdo->prepare("
     SELECT type, COUNT(*) as count
     FROM appointment_requests 
-    WHERE status = 'approved'
+    WHERE user_id = ?  -- Only member's appointments
+    AND status = 'approved'
     AND DATE(preferred_datetime) BETWEEN ? AND ?
     GROUP BY type
     ORDER BY count DESC
 ");
-$type_stmt->execute([$month_start, $month_end]);
+$type_stmt->execute([$user_id, $month_start, $month_end]);
 $type_distribution = $type_stmt->fetchAll();
 
 // Determine current view
@@ -445,26 +451,63 @@ if ($view === 'month') {
     <!-- TOP HEADER -->
     <div class="top-header">
         <div class="header-left">
-            <img src="../images/logo.png" alt="SJPL Logo">
-            <h3 style="color:#065f46; font-size:24px; font-weight:700;">San Jose Parish Laligan</h3>
+            <img src="../images/logo.png" alt="SJPL Logo" class="logo-img">
+            <h3 class="parish-name">San Jose Parish Laligan</h3 >
         </div>
+        <style>
+                .parish-name {
+                    font-size: 22px;
+                    color: #065f46;
+                    font-weight: 700;
+                }
+        </style>
         <div class="header-search">
-            <div class="search-box">
-                <i class="fas fa-search search-icon"></i>
-                <input type="text" id="calendarSearch" placeholder="Search approved appointments..." onkeyup="searchAppointments()">
-            </div>
+            <form action="search.php" method="GET" style="width:100%; max-width:500px;">
+                <div class="search-box">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" name="q" placeholder="Search announcements, members, appointments..." required>
+                </div>
+            </form>
         </div>
+
+        
         <div class="header-right">
             <div class="notification-bell">
                 <i class="fas fa-bell"></i>
-                <span class="badge"><?= count($today_appointments) ?></span>
+                <span class="badge">3</span>
             </div>
+            <a href="../logout.php" style="text-decoration: none;">
             <div class="user-profile">
                 <span><?= htmlspecialchars($user_fullname) ?></span>
                 <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User">
-                <i class="fas fa-caret-down"></i>
+                <i class="fas fa-sign-out-alt"></i>
             </div>
+            </a>
         </div>
+        <script>
+            // Toggle dropdown menu
+            function toggleDropdown() {
+                const dropdown = document.getElementById('userDropdown');
+                dropdown.classList.toggle('show');
+            }
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('userDropdown');
+                const profileContainer = document.querySelector('.user-profile-container');
+                
+                if (!profileContainer.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+
+            // Close dropdown on Escape key
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    document.getElementById('userDropdown').classList.remove('show');
+                }
+            });
+        </script>
     </div>
 
     <!-- Main Layout -->
@@ -485,21 +528,21 @@ if ($view === 'month') {
         <!-- Main Content -->
         <div class="content-wrapper">
             <div class="main-calendar">
-                <h1 class="page-title">Appointments Calendar</h1>
+                <h1 class="page-title">My Appointments Calendar</h1>
 
                 <!-- Statistics -->
                 <div class="stats-bar">
                     <div class="stat-card">
                         <div class="stat-value"><?= $stats['total_approved'] ?? 0 ?></div>
-                        <div class="stat-label">Total Approved Appointments</div>
+                        <div class="stat-label">My Approved Appointments</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value"><?= count($appointments) ?></div>
-                        <div class="stat-label">Appointments This Month</div>
+                        <div class="stat-label">My Appointments This Month</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value"><?= count($appointments_by_date) ?></div>
-                        <div class="stat-label">Busy Days This Month</div>
+                        <div class="stat-label">My Busy Days This Month</div>
                     </div>
                 </div>
 
@@ -559,7 +602,7 @@ if ($view === 'month') {
                                                 <?php foreach (array_slice($day_data['appointments'] ?? [], 0, 3) as $appt): ?>
                                                     <div class="event-item <?= $appt['type'] ?>" 
                                                          title="<?= htmlspecialchars($appt['requester_name']) ?> - <?= date('g:i A', strtotime($appt['appointment_time'])) ?>">
-                                                        <?= date('g:i', strtotime($appt['appointment_time'])) ?> - <?= htmlspecialchars($appt['requester_name']) ?>
+                                                        <?= date('g:i', strtotime($appt['appointment_time'])) ?> - <?= htmlspecialchars($appt['type']) ?>
                                                     </div>
                                                 <?php endforeach; ?>
                                                 <?php if ($appointment_count > 3): ?>
@@ -583,7 +626,7 @@ if ($view === 'month') {
             <div class="right-sidebar">
                 <!-- Today's Appointments -->
                 <div class="sidebar-section">
-                    <h3 class="section-title"><i class="fas fa-calendar-day"></i> Today's Appointments</h3>
+                    <h3 class="section-title"><i class="fas fa-calendar-day"></i> My Today's Appointments</h3>
                     <?php if (!empty($today_appointments)): ?>
                         <?php foreach ($today_appointments as $appt): ?>
                             <div class="appointment-card" onclick="viewAppointmentDetails(<?= $appt['id'] ?>)">
@@ -604,7 +647,7 @@ if ($view === 'month') {
 
                 <!-- Appointment Type Distribution -->
                 <div class="sidebar-section">
-                    <h3 class="section-title"><i class="fas fa-chart-pie"></i> This Month's Distribution</h3>
+                    <h3 class="section-title"><i class="fas fa-chart-pie"></i> My This Month's Distribution</h3>
                     <?php if (!empty($type_distribution)): ?>
                         <?php foreach ($type_distribution as $type): ?>
                             <div class="type-bar">
@@ -629,15 +672,15 @@ if ($view === 'month') {
 
                 <!-- Quick Stats -->
                 <div class="sidebar-section">
-                    <h3 class="section-title"><i class="fas fa-chart-line"></i> Calendar Stats</h3>
+                    <h3 class="section-title"><i class="fas fa-chart-line"></i> My Calendar Stats</h3>
                     <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:15px;">
                         <div style="text-align:center;">
                             <div style="font-size:24px; font-weight:700; color:#059669;"><?= $stats['total_approved'] ?? 0 ?></div>
-                            <div style="font-size:12px; color:#64748b;">Total Approved</div>
+                            <div style="font-size:12px; color:#64748b;">My Approved</div>
                         </div>
                         <div style="text-align:center;">
                             <div style="font-size:24px; font-weight:700; color:#f59e0b;"><?= $stats['days_with_appointments'] ?? 0 ?></div>
-                            <div style="font-size:12px; color:#64748b;">Busy Days</div>
+                            <div style="font-size:12px; color:#64748b;">My Busy Days</div>
                         </div>
                         <div style="text-align:center;">
                             <div style="font-size:24px; font-weight:700; color:#6366f1;"><?= count($appointments_by_date) ?></div>
@@ -657,7 +700,7 @@ if ($view === 'month') {
     <div id="dayModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="modalDayTitle">Appointments</h2>
+                <h2 id="modalDayTitle">My Appointments</h2>
                 <button class="close-btn" onclick="closeDayModal()">&times;</button>
             </div>
             <div class="modal-body" id="dayAppointmentsList">
@@ -673,7 +716,7 @@ if ($view === 'month') {
     <div id="detailsModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Appointment Details</h2>
+                <h2>My Appointment Details</h2>
                 <button class="close-btn" onclick="closeDetailsModal()">&times;</button>
             </div>
             <div class="modal-body" id="appointmentDetails">
@@ -682,7 +725,7 @@ if ($view === 'month') {
             <div class="modal-footer">
                 <button class="btn-cancel" onclick="closeDetailsModal()">Close</button>
                 <button class="btn-submit" onclick="window.location.href='appointments.php'">
-                    Manage Appointments
+                    Manage My Appointments
                 </button>
             </div>
         </div>
@@ -709,7 +752,7 @@ if ($view === 'month') {
                 day: 'numeric'
             });
             
-            modalTitle.textContent = 'Appointments for ' + formattedDate;
+            modalTitle.textContent = 'My Appointments for ' + formattedDate;
             
             let html = '';
             if (dayAppointments[date]) {
@@ -727,8 +770,8 @@ if ($view === 'month') {
                                     ${appt.type.replace(/_/g, ' ').toUpperCase()}
                                 </span>
                             </div>
-                            <div class="detail-label">Requester</div>
-                            <div class="detail-value">${escapeHtml(appt.requester_name)}</div>
+                            <div class="detail-label">Appointment Type</div>
+                            <div class="detail-value">${appt.type.replace(/_/g, ' ').toUpperCase()}</div>
                             <div class="detail-label">Purpose</div>
                             <div class="detail-value">${appt.purpose ? escapeHtml(appt.purpose) : 'No purpose specified'}</div>
                         </div>
@@ -762,7 +805,7 @@ if ($view === 'month') {
                     <div class="detail-value">${time}</div>
                 </div>
                 <div class="appointment-detail">
-                    <div class="detail-label">Requester Name</div>
+                    <div class="detail-label">My Name</div>
                     <div class="detail-value">${escapeHtml(appointment.requester_name)}</div>
                 </div>
                 <div class="appointment-detail">
@@ -781,13 +824,13 @@ if ($view === 'month') {
                 ` : ''}
                 ${appointment.email ? `
                 <div class="appointment-detail">
-                    <div class="detail-label">Email</div>
+                    <div class="detail-label">My Email</div>
                     <div class="detail-value">${escapeHtml(appointment.email)}</div>
                 </div>
                 ` : ''}
                 ${appointment.phone ? `
                 <div class="appointment-detail">
-                    <div class="detail-label">Phone</div>
+                    <div class="detail-label">My Phone</div>
                     <div class="detail-value">${escapeHtml(appointment.phone)}</div>
                 </div>
                 ` : ''}

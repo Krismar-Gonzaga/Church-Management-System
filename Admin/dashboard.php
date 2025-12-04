@@ -3,21 +3,64 @@ session_start();
 require_once '../Database/DBconnection.php';
 
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    header('Location: ../Staff/login.php');
+    header('Location: ../login.php');
     exit;
 }
 
 // Ensure only admins can access this view
 if (($_SESSION['role'] ?? '') !== 'admin') {
-    header('Location: ../Staff/login.php');
+    header('Location: ../login.php');
     exit;
 }
 
 $user_fullname = $_SESSION['user'] ?? 'Administrator';
 
-// Fetch data
-$announcements = $pdo->query("SELECT a.*, u.fullname FROM announcements a JOIN users u ON a.posted_by = u.id ORDER BY a.created_at DESC LIMIT 10")->fetchAll();
-$appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM appointment_requests ar JOIN users u ON ar.user_id = u.id ORDER BY ar.requested_at DESC LIMIT 8")->fetchAll();
+// Pagination variables
+$announcements_per_page = 10;
+$appointments_per_page = 8;
+
+$announcements_page = isset($_GET['a_page']) ? (int)$_GET['a_page'] : 1;
+$appointments_page = isset($_GET['ap_page']) ? (int)$_GET['ap_page'] : 1;
+
+$announcements_offset = ($announcements_page - 1) * $announcements_per_page;
+$appointments_offset = ($appointments_page - 1) * $appointments_per_page;
+
+// Get total counts for pagination
+$total_announcements = $pdo->query("SELECT COUNT(*) FROM announcements")->fetchColumn();
+$total_appointments = $pdo->query("SELECT COUNT(*) FROM appointment_requests")->fetchColumn();
+
+$total_announcement_pages = ceil($total_announcements / $announcements_per_page);
+$total_appointment_pages = ceil($total_appointments / $appointments_per_page);
+
+// Fetch all announcements (without LIMIT)
+$announcements_stmt = $pdo->prepare("
+    SELECT a.*, u.fullname 
+    FROM announcements a 
+    JOIN users u ON a.posted_by = u.id 
+    ORDER BY a.created_at DESC 
+    LIMIT :limit OFFSET :offset
+");
+$announcements_stmt->bindValue(':limit', $announcements_per_page, PDO::PARAM_INT);
+$announcements_stmt->bindValue(':offset', $announcements_offset, PDO::PARAM_INT);
+$announcements_stmt->execute();
+$announcements = $announcements_stmt->fetchAll();
+
+// Fetch all appointments (without LIMIT)
+$appointments_stmt = $pdo->prepare("
+    SELECT ar.*, u.fullname, ar.type, ar.status 
+    FROM appointment_requests ar 
+    JOIN users u ON ar.user_id = u.id 
+    ORDER BY ar.requested_at DESC 
+    LIMIT :limit OFFSET :offset
+");
+$appointments_stmt->bindValue(':limit', $appointments_per_page, PDO::PARAM_INT);
+$appointments_stmt->bindValue(':offset', $appointments_offset, PDO::PARAM_INT);
+$appointments_stmt->execute();
+$appointments = $appointments_stmt->fetchAll();
+
+// For the count display
+$all_announcements_count = $total_announcements;
+$all_appointments_count = $total_appointments;
 ?>
 
 <!DOCTYPE html>
@@ -184,24 +227,22 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
         .announcement {
             display: flex;
             gap: 18px;
-            
-            height: 400px;
+            min-height: 120px;
             padding: 20px 0;
-            border: 1px solid #f1f5f9;
+            border-bottom: 1px solid #f1f5f9;
             margin-bottom: 18px;
             border-radius: 12px;
         }
-        .announcement:last-child { border-bottom: none; }
+        .announcement:last-child { border-bottom: none; margin-bottom: 0; }
         .announcement img { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
         .announcement-meta { 
             font-size: 13.5px; 
             color: #64748b; 
-            margin-top: 10px;
-            margin-bottom: 8px; }
+            margin-bottom: 8px; 
+        }
         .announcement-title { 
-            font-size: 20px; 
+            font-size: 18px; 
             font-weight: 600; 
-            margin-top: 50px;
             color: #065f46; 
             margin-bottom: 10px; 
         }
@@ -239,25 +280,84 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
             position: relative;
             overflow: hidden;
         }
-        /* HOVER EFFECT - Modern lift + shadow + border color */
         .appointment-item:hover .appointment-card {
             transform: translateY(-6px);
             box-shadow: 0 14px 32px rgba(5, 150, 105, 0.18) !important;
             border-color: #059669;
             background: linear-gradient(to bottom, #ffffff 0%, #f8fff9 100%);
         }
-        
         .appointment-item:last-child { border-bottom: none; }
         .status {
-            padding: 5px 12px; border-radius: 20px; font-size: 11.5px; font-weight: 600;
+            padding: 5px 12px; 
+            border-radius: 20px; 
+            font-size: 11.5px; 
+            font-weight: 600;
+            display: inline-block;
+            margin-top: 10px;
         }
         .status-approved { background: #d1fae5; color: #065f46; }
         .status-cancelled { background: #fee2e2; color: #991b1b; }
         .status-rejected { background: #fce7f3; color: #be123c; }
         .status-rescheduled { background: #dbeafe; color: #1d4ed8; }
+        .status-pending { background: #fef3c7; color: #92400e; }
         .btn-view {
-            background: #e2e8f0; color: #475569; padding: 7px 14px; border-radius: 10px;
-            font-size: 12px; border: none; cursor: pointer; font-weight: 500;
+            background: #e2e8f0; 
+            color: #475569; 
+            padding: 7px 14px; 
+            border-radius: 10px;
+            font-size: 12px; 
+            border: none; 
+            cursor: pointer; 
+            font-weight: 500;
+            float: right;
+            margin-top: -25px;
+        }
+        
+        /* Pagination Styles */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+        }
+        .pagination-btn {
+            padding: 8px 16px;
+            background: #f0fdf4;
+            border: 1px solid #d1fae5;
+            border-radius: 8px;
+            color: #065f46;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            background: #059669;
+            color: white;
+            border-color: #059669;
+        }
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .pagination-info {
+            color: #64748b;
+            font-size: 14px;
+            margin: 0 10px;
+        }
+        
+        /* Count Badges */
+        .count-badge {
+            background: #059669;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+            vertical-align: middle;
         }
 
         @media (max-width: 1024px) {
@@ -268,6 +368,51 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
             .header-left .logo-img { height: 48px; }
             .header-left .priest-img { width: 46px; height: 46px; }
         }
+        
+        /* SEARCH BAR STYLES */
+        .header-search {
+            flex: 1;
+            margin-right: 50px;
+            display: flex;
+            justify-content: right;
+            padding: 0 30px;
+        }
+        .search-box {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 14px 50px 14px 48px;
+            border: 2px solid #e2e8f0;
+            border-radius: 16px;
+            font-size: 15px;
+            background: #f8fafc;
+            outline: none;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        .search-box input:focus {
+            border-color: #059669;
+            background: white;
+            box-shadow: 0 8px 25px rgba(5,150,105,0.15);
+        }
+        .search-icon {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #059669;
+            font-size: 18px;
+            pointer-events: none;
+        }
+        
+        .parish-name {
+            font-size: 22px;
+            color: #065f46;
+            font-weight: 700;
+        }
     </style>
 </head>
 <body>
@@ -276,62 +421,10 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
     <div class="top-header">
         <div class="header-left">
             <img src="../images/logo.png" alt="SJPL Logo" class="logo-img">
-            <h3 class="parish-name">San Jose Parish Laligan</h3 >
-            <style>
-                .parish-name {
-                    font-size: 22px;
-                    color: #065f46;
-                    font-weight: 700;
-                }
-            </style>
-
+            <h3 class="parish-name">San Jose Parish Laligan</h3>
         </div>
+
         <!-- SEARCH BAR (CENTERED) -->
-         <style>
-            /* SEARCH BAR STYLES */
-            .header-search {
-                flex: 1;
-                margin-right: 50px;
-                display: flex;
-                justify-content: right;
-                padding: 0 30px;
-            }
-
-            .search-box {
-                position: relative;
-                width: 100%;
-                max-width: 500px;
-            }
-
-            .search-box input {
-                width: 100%;
-                padding: 14px 50px 14px 48px;
-                border: 2px solid #e2e8f0;
-                border-radius: 16px;
-                font-size: 15px;
-                background: #f8fafc;
-                outline: none;
-                transition: all 0.3s;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            }
-
-            .search-box input:focus {
-                border-color: #059669;
-                background: white;
-                box-shadow: 0 8px 25px rgba(5,150,105,0.15);
-            }
-
-            .search-icon {
-                position: absolute;
-                left: 18px;
-                top: 50%;
-                transform: translateY(-50%);
-                color: #059669;
-                font-size: 18px;
-                pointer-events: none;
-            }
-         </style>
-
         <div class="header-search">
             <form action="search.php" method="GET" style="width:100%; max-width:500px;">
                 <div class="search-box">
@@ -340,7 +433,6 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
                 </div>
             </form>
         </div>
-
         
         <div class="header-right">
             <div class="notification-bell">
@@ -359,7 +451,6 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
     <div class="main-layout">
         <!-- Left Sidebar -->
         <div class="sidebar">
-            
             <div class="nav-menu">
                 <a href="dashboard.php"><div class="nav-item active"><i class="fas fa-tachometer-alt"></i> Dashboard</div></a>
                 <a href="announcements.php"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>
@@ -378,26 +469,55 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
             <div class="center-area">
                 <h1 class="page-title">Dashboard</h1>
                 <div class="section">
-                    <h2 style="margin-bottom:24px; color:#065f46; font-size:22px;">Announcements</h2>
-                    <?php foreach ($announcements as $a): ?>
-                    <div class="announcement">
-                        <img src="https://via.placeholder.com/52/6366f1/ffffff?text=<?= substr($a['fullname'],0,1) ?>" alt="Poster">
-                        <div style="flex:1;">
-                            <div class="announcement-meta">
-                                <?= htmlspecialchars($a['fullname']) ?> • <?= date('M j, Y • g:i A', strtotime($a['created_at'])) ?>
+                    <h2 style="margin-bottom:24px; color:#065f46; font-size:22px;">
+                        All Announcements 
+                        <span class="count-badge"><?= $all_announcements_count ?> Total</span>
+                    </h2>
+                    <?php if (!empty($announcements)): ?>
+                        <?php foreach ($announcements as $a): ?>
+                        <div class="announcement">
+                            <img src="https://via.placeholder.com/52/6366f1/ffffff?text=<?= substr($a['fullname'],0,1) ?>" alt="Poster">
+                            <div style="flex:1;">
+                                <div class="announcement-meta">
+                                    <strong><?= htmlspecialchars($a['fullname']) ?></strong> • <?= date('M j, Y • g:i A', strtotime($a['created_at'])) ?>
+                                </div>
+                                <div class="announcement-title"><?= htmlspecialchars($a['title']) ?></div>
+                                <p style="color:#475569; line-height:1.7; margin-top: 5px;">
+                                    <?= nl2br(htmlspecialchars(substr($a['message'], 0, 200))) ?>
+                                    <?= strlen($a['message']) > 200 ? '...' : '' ?>
+                                </p>
                             </div>
-                            <div class="announcement-title"><?= htmlspecialchars($a['title']) ?></div>
-                            <p style="color:#475569; line-height:1.7;">
-                                <?= nl2br(htmlspecialchars($a['message'])) ?>
-                            </p>
+                            <div style="margin-left:auto; font-size:26px; color:#94a3b8; align-self: center;">
+                                <i class="fas fa-comment-dots"></i>
+                            </div>
                         </div>
-                        <div style="margin-left:auto; font-size:26px; color:#94a3b8;">
-                            <i class="fas fa-comment-dots"></i>
+                        <?php endforeach; ?>
+                        
+                        <!-- Announcements Pagination -->
+                        <?php if ($total_announcement_pages > 1): ?>
+                        <div class="pagination">
+                            <button class="pagination-btn" 
+                                onclick="window.location.href='?a_page=<?= max(1, $announcements_page-1) ?>&ap_page=<?= $appointments_page ?>'"
+                                <?= $announcements_page <= 1 ? 'disabled' : '' ?>>
+                                <i class="fas fa-chevron-left"></i> Previous
+                            </button>
+                            <span class="pagination-info">
+                                Page <?= $announcements_page ?> of <?= $total_announcement_pages ?>
+                                (<?= $all_announcements_count ?> announcements)
+                            </span>
+                            <button class="pagination-btn" 
+                                onclick="window.location.href='?a_page=<?= min($total_announcement_pages, $announcements_page+1) ?>&ap_page=<?= $appointments_page ?>'"
+                                <?= $announcements_page >= $total_announcement_pages ? 'disabled' : '' ?>>
+                                Next <i class="fas fa-chevron-right"></i>
+                            </button>
                         </div>
-                    </div>
-                    <?php endforeach; ?>
-                    <?php if (empty($announcements)): ?>
-                        <p style="text-align:center; padding:70px; color:#94a3b8; font-size:16px;">No announcements yet.</p>
+                        <?php endif; ?>
+                        
+                    <?php else: ?>
+                        <p style="text-align:center; padding:50px; color:#94a3b8; font-size:16px;">
+                            <i class="fas fa-bullhorn" style="font-size: 48px; margin-bottom: 20px; display: block;"></i>
+                            No announcements have been created yet.
+                        </p>
                     <?php endif; ?>
                 </div>
             </div>
@@ -405,72 +525,84 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
             <!-- Right Sidebar: Appointments -->
             <div class="right-sidebar">
                 <div class="sidebar-title">
-                    Appointment Requests
-                    <span style="font-size:15px; color:#64748b; font-weight:normal;">(<?= count($appointments) ?>)</span>
+                    All Appointment Requests
+                    <span class="count-badge"><?= $all_appointments_count ?> Total</span>
                 </div>
-                <?php foreach ($appointments as $ap): ?>
                 
-                <div class="appointment-item">
-                    <div class="appointment-card">
-                        <div class="appointment-header">
-                            <h4><?= htmlspecialchars($ap['fullname']) ?></h4>
-                        
+                <?php if (!empty($appointments)): ?>
+                    <?php foreach ($appointments as $ap): ?>
+                    <div class="appointment-item">
+                        <div class="appointment-card">
+                            <div class="appointment-header">
+                                <h4 style="margin-bottom: 5px;"><?= htmlspecialchars($ap['fullname']) ?></h4>
+                                <div style="font-size: 13px; color: #64748b; margin-bottom: 10px;">
+                                    <i class="far fa-calendar"></i> <?= date('M j, Y', strtotime($ap['requested_at'])) ?>
+                                    <i class="far fa-clock" style="margin-left: 15px;"></i> <?= date('g:i A', strtotime($ap['requested_at'])) ?>
+                                </div>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <strong>Type:</strong> <?= ucfirst($ap['type']) ?>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="status status-<?= strtolower($ap['status']) ?>">
+                                    <?= ucfirst($ap['status']) ?>
+                                </span>
+                                <button class="btn-view" onclick="viewAppointment(<?= $ap['id'] ?>)">
+                                    <i class="fas fa-eye"></i> View Details
+                                </button>
+                            </div>
                         </div>
-                        <Style>
-                            .appointment-date{
-                                justify-content: right;
-                                margin-top: -20px;
-                                margin-left: 210px;
-                            }
-                        </Style>
-                        <div class="appointment-date">
-                            <?= date('M j, Y • g:i A', strtotime($ap['requested_at'])) ?>
-                        </div>
-                        <Style>
-                            .appointment-type{
-                                justify-content: left;
-                                margin-top: 20px;
-                                margin-bottom: 10px;
-                            }
-                        </Style>
-                        <div class="appointment-type">
-                            <strong>Type:</strong> <?= ucfirst($ap['type']) ?>
-                        </div>
-                        <style>
-                            .btn-view{
-                                margin-top: 10px;
-                                color:#475569; 
-                                line-height:1.6;
-                                height:30px;
-                                margin-left: 250px;
-                                overflow:hidden;
-                                text-overflow: ellipsis;
-                                justify-content: right;
-                            }
-                        </style>
-                        <button class="btn-view">
-                            <i class="fas fa-eye"></i> View Full Text
-                        </button>
-                        <Style>
-                            .status{
-                                margin-top: 10px;
-                                margin-left: 150px;
-                                margin-bottom: -25px;
-                            }
-                        </Style>
-                            
-                            <span class="status status-<?= $ap['status'] === 'rescheduled' ? 'rescheduled' : strtolower($ap['status']) ?>">
-                                <?= ucfirst($ap['status']) ?>
-                            </span>
                     </div>
-                </div>
-                <?php endforeach; ?>
+                    <?php endforeach; ?>
+                    
+                    <!-- Appointments Pagination -->
+                    <?php if ($total_appointment_pages > 1): ?>
+                    <div class="pagination">
+                        <button class="pagination-btn" 
+                            onclick="window.location.href='?a_page=<?= $announcements_page ?>&ap_page=<?= max(1, $appointments_page-1) ?>'"
+                            <?= $appointments_page <= 1 ? 'disabled' : '' ?>>
+                            <i class="fas fa-chevron-left"></i> Previous
+                        </button>
+                        <span class="pagination-info">
+                            Page <?= $appointments_page ?> of <?= $total_appointment_pages ?>
+                        </span>
+                        <button class="pagination-btn" 
+                            onclick="window.location.href='?a_page=<?= $announcements_page ?>&ap_page=<?= min($total_appointment_pages, $appointments_page+1) ?>'"
+                            <?= $appointments_page >= $total_appointment_pages ? 'disabled' : '' ?>>
+                            Next <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <?php endif; ?>
+                    
+                <?php else: ?>
+                    <p style="text-align:center; padding:30px; color:#94a3b8; font-size:16px;">
+                        <i class="fas fa-calendar-check" style="font-size: 48px; margin-bottom: 20px; display: block;"></i>
+                        No appointment requests yet.
+                    </p>
+                <?php endif; ?>
+                
                 <div style="text-align:center; margin-top:28px; color:#059669; font-weight:600; cursor:pointer; font-size:15px;">
-                    <i class="fas fa-chevron-down"></i> Discover All
+                    <i class="fas fa-chart-bar"></i> View Analytics Dashboard
                 </div>
             </div>
         </div>
     </div>
+    
+    <script>
+        function viewAppointment(id) {
+            // You can implement a modal or redirect to view appointment details
+            alert('Viewing appointment ID: ' + id);
+            // window.location.href = 'view_appointment.php?id=' + id;
+        }
+        
+        // Simple function to show all appointments/announcements
+        function showAll(type) {
+            if (type === 'announcements') {
+                window.location.href = 'announcements.php?show=all';
+            } else if (type === 'appointments') {
+                window.location.href = 'appointments.php?show=all';
+            }
+        }
+    </script>
 </body>
 </html>
-
