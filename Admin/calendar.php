@@ -448,12 +448,7 @@ if ($view === 'month') {
             <img src="../images/logo.png" alt="SJPL Logo">
             <h3 style="color:#065f46; font-size:24px; font-weight:700;">San Jose Parish Laligan</h3>
         </div>
-        <div class="header-search">
-            <div class="search-box">
-                <i class="fas fa-search search-icon"></i>
-                <input type="text" id="calendarSearch" placeholder="Search approved appointments..." onkeyup="searchAppointments()">
-            </div>
-        </div>
+        
         <div class="header-right">
             <div class="notification-bell">
                 <i class="fas fa-bell"></i>

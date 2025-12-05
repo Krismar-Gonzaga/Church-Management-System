@@ -100,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $stmt = $pdo->prepare("
                 UPDATE users SET 
                 fullname = ?, email = ?, role = ?, phone = ?, zone = ?, 
-                address = ?, civil_status = ?, birthday = ?, occupation = ?, status = ?, updated_at = NOW()
+                address = ?, civil_status = ?, birthday = ?, occupation = ?, is_active = ?, updated_at = NOW()
                 WHERE id = ?
             ");
             
@@ -182,7 +182,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     
     if ($status_id > 0 && $status_id !== $user_id) {
         try {
-            $stmt = $pdo->prepare("UPDATE users SET status = ?, updated_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE users SET is_active = ?, updated_at = NOW() WHERE id = ?");
             if ($stmt->execute([$status, $status_id])) {
                 $message = 'User status updated successfully!';
                 $message_type = 'success';
@@ -247,7 +247,7 @@ if ($role_filter !== 'all') {
 }
 
 if ($status_filter !== 'all') {
-    $where_conditions[] = "status = ?";
+    $where_conditions[] = "is_active = ?"; // Fixed: Changed from 'status' to 'is_active'
     $params[] = $status_filter;
 }
 
@@ -259,7 +259,7 @@ if ($zone_filter !== 'all') {
 $where_clause = empty($where_conditions) ? '' : 'WHERE ' . implode(' AND ', $where_conditions);
 
 // Validate sort parameters
-$allowed_sorts = ['fullname', 'email', 'role', 'created_at', 'status'];
+$allowed_sorts = ['fullname', 'email', 'role', 'created_at', 'is_active'];
 $allowed_orders = ['asc', 'desc'];
 $sort_by = in_array($sort_by, $allowed_sorts) ? $sort_by : 'created_at';
 $sort_order = in_array($sort_order, $allowed_orders) ? $sort_order : 'desc';
@@ -276,7 +276,7 @@ $stmt = $pdo->prepare($query);
 $stmt->execute($params);
 $users = $stmt->fetchAll();
 
-// Get statistics
+// Get statistics - Fixed: Changed all references from 'status' to 'is_active'
 $stats_query = "
     SELECT 
         COUNT(*) as total,
@@ -1170,7 +1170,8 @@ $roles = ['admin', 'priest', 'secretary', 'treasurer', 'member'];
                             <tbody>
                                 <?php foreach ($users as $user): 
                                     $is_current_user = $user['id'] == $user_id;
-                                    $status_class = $user['status'] ?? 'active';
+                                    // Fixed: Accessing is_active instead of status
+                                    $status_class = $user['is_active'] ?? 'active';
                                 ?>
                                     <tr class="<?= $status_class ?>">
                                         <td class="checkbox-cell">
@@ -1633,11 +1634,11 @@ $roles = ['admin', 'priest', 'secretary', 'treasurer', 'member'];
             roleBadge.textContent = user.role.charAt(0).toUpperCase() + user.role.slice(1);
             roleBadge.className = 'role-badge role-' + user.role;
             
-            // Set status badge
+            // Set status badge - Fixed: Accessing is_active instead of status
             const statusBadge = document.getElementById('viewStatus');
-            statusBadge.textContent = user.status ? 
-                user.status.charAt(0).toUpperCase() + user.status.slice(1) : 'Active';
-            statusBadge.className = 'status-badge status-' + (user.status || 'active');
+            const userStatus = user.is_active || 'active';
+            statusBadge.textContent = userStatus.charAt(0).toUpperCase() + userStatus.slice(1);
+            statusBadge.className = 'status-badge status-' + userStatus;
             
             openViewModal();
         }
@@ -1656,7 +1657,8 @@ $roles = ['admin', 'priest', 'secretary', 'treasurer', 'member'];
             document.getElementById('editCivilStatus').value = user.civil_status || 'single';
             document.getElementById('editBirthday').value = user.birthday || '';
             document.getElementById('editOccupation').value = user.occupation || '';
-            document.getElementById('editStatus').value = user.status || 'active';
+            // Fixed: Accessing is_active instead of status
+            document.getElementById('editStatus').value = user.is_active || 'active';
             document.getElementById('editAddress').value = user.address || '';
             
             openEditModal();

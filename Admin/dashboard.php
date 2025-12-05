@@ -424,15 +424,7 @@ $all_appointments_count = $total_appointments;
             <h3 class="parish-name">San Jose Parish Laligan</h3>
         </div>
 
-        <!-- SEARCH BAR (CENTERED) -->
-        <div class="header-search">
-            <form action="search.php" method="GET" style="width:100%; max-width:500px;">
-                <div class="search-box">
-                    <i class="fas fa-search search-icon"></i>
-                    <input type="text" name="q" placeholder="Search announcements, members, appointments..." required>
-                </div>
-            </form>
-        </div>
+        
         
         <div class="header-right">
             <div class="notification-bell">
