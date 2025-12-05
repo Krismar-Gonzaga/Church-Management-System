@@ -850,9 +850,7 @@ $total_pages = ceil($total / $limit);
                         <div class="poster-info">
                             <h4><?= htmlspecialchars($a['fullname']) ?></h4>
                             <small>Posted: <?= date('M j, Y g:i A', strtotime($a['created_at'])) ?></small>
-                            <?php if ($a['updated_at']): ?>
-                                <small style="color: #059669; display: block;">Updated: <?= date('M j, Y g:i A', strtotime($a['updated_at'])) ?></small>
-                            <?php endif; ?>
+                            
                         </div>
                         <i class="fas fa-comment-dots comment-icon"></i>
                     </div>
