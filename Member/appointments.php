@@ -24,8 +24,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if ($check_stmt->fetch()) {
                 $stmt = $pdo->prepare("UPDATE appointment_requests SET status = 'cancelled', updated_at = NOW() WHERE id = ?");
                 if ($stmt->execute([$appointment_id])) {
-                    $message = 'Appointment cancelled successfully!';
-                    $message_type = 'success';
                     header("Location: appointments.php?message=cancelled");
                     exit;
                 }
@@ -56,7 +54,7 @@ $type_filter = isset($_GET['type']) ? $_GET['type'] : 'all';
 $search_query = isset($_GET['search']) ? trim($_GET['search']) : '';
 
 // Build query based on role
-$where_conditions = ["u.id = ?"];
+$where_conditions = ["ar.user_id = ?"];
 $params = [$user_id];
 
 if ($status_filter !== 'all') {
@@ -70,8 +68,9 @@ if ($type_filter !== 'all') {
 }
 
 if (!empty($search_query)) {
-    $where_conditions[] = "(ar.purpose LIKE ? OR ar.notes LIKE ?)";
+    $where_conditions[] = "(ar.purpose LIKE ? OR ar.notes LIKE ? OR ar.chapel LIKE ?)";
     $search_term = "%$search_query%";
+    $params[] = $search_term;
     $params[] = $search_term;
     $params[] = $search_term;
 }
@@ -94,11 +93,16 @@ $stats_stmt = $pdo->prepare($stats_query);
 $stats_stmt->execute([$user_id]);
 $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
 
-// Fetch member's appointments
+// MODIFIED QUERY: Fixed to use correct table structure
 $query = "
-    SELECT ar.*, u.fullname AS requester_name, u.profile_pic 
+    SELECT ar.*, 
+           u.fullname AS requester_name, 
+           u.profile_pic,
+           p.fullname as priest_fullname, 
+           p.profile_pic as priest_profile_pic
     FROM appointment_requests ar 
-    JOIN users u ON ar.user_id = u.id 
+    LEFT JOIN users u ON ar.user_id = u.id 
+    LEFT JOIN users p ON ar.priest_id = p.id 
     $where_clause
     ORDER BY ar.preferred_datetime DESC
 ";
@@ -109,10 +113,11 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get upcoming appointments for sidebar
 $upcoming_query = "
-    SELECT ar.*, u.fullname 
+    SELECT ar.*, u.fullname, p.fullname as priest_name
     FROM appointment_requests ar 
-    JOIN users u ON ar.user_id = u.id 
-    WHERE u.id = ? 
+    LEFT JOIN users u ON ar.user_id = u.id 
+    LEFT JOIN users p ON ar.priest_id = p.id
+    WHERE ar.user_id = ? 
     AND ar.status = 'approved'
     AND ar.preferred_datetime >= CURDATE()
     ORDER BY ar.preferred_datetime ASC 
@@ -295,6 +300,18 @@ $upcoming_appointments = $upcoming_stmt->fetchAll();
             background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb;
         }
 
+        /* Priest Badge */
+        .priest-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #e0f2fe; color: #0369a1; padding: 4px 10px;
+            border-radius: 8px; font-size: 13px; font-weight: 600;
+            margin-top: 5px;
+        }
+        .priest-badge img {
+            width: 24px; height: 24px; border-radius: 50%;
+            border: 2px solid white;
+        }
+
         /* Empty State */
         .empty-state {
             text-align: center; padding: 80px 20px; background: white; border-radius: 20px;
@@ -331,13 +348,15 @@ $upcoming_appointments = $upcoming_stmt->fetchAll();
         <div class="header-right">
             <div class="notification-bell">
                 <i class="fas fa-bell"></i>
-                <span class="badge"><?= $stats['pending'] ?? 0 ?></span>
+                <span class="badge">3</span>
             </div>
-            <div class="user-profile" onclick="window.location.href='profile.php'">
+            <a href="../logout.php" style="text-decoration: none;">
+            <div class="user-profile">
                 <span><?= htmlspecialchars($user_fullname) ?></span>
                 <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User">
-                <i class="fas fa-caret-down"></i>
+                <i class="fas fa-sign-out-alt"></i>
             </div>
+            </a>
         </div>
     </div>
 
@@ -463,17 +482,28 @@ $upcoming_appointments = $upcoming_stmt->fetchAll();
                         <?php foreach ($appointments as $ap): 
                             $can_cancel = $ap['status'] === 'pending' || $ap['status'] === 'approved';
                             $is_past = strtotime($ap['preferred_datetime']) < time();
+                            // Get priest name - first check assigned priest (priest_fullname), then fall back to priest field
+                            $priest_name = !empty($ap['priest_fullname']) ? $ap['priest_fullname'] : $ap['priest'];
+                            $priest_profile_pic = $ap['priest_profile_pic'] ?? '';
                         ?>
                             <div class="appointment-card">
                                 <div class="card-header">
-                                    <img src="<?= $ap['profile_pic'] ? '../uploads/profile_pics/'.$ap['profile_pic'] : 'https://via.placeholder.com/52/059669/ffffff?text='.substr($ap['requester_name'],0,1) ?>" alt="User">
+                                    <img src="<?= !empty($ap['profile_pic']) && $ap['profile_pic'] != 'default.jpg' ? '../uploads/profile_pics/'.$ap['profile_pic'] : 'https://via.placeholder.com/52/059669/ffffff?text='.substr($ap['requester_name'],0,1) ?>" alt="User">
                                     <div style="flex:1;">
                                         <h4 style="margin:0; font-size:17px; font-weight:600; color:#1e293b;">
-                                            <?= htmlspecialchars($ap['requester_name']) ?>
+                                            <?= htmlspecialchars($ap['full_name'] ?? $ap['requester_name']) ?>
                                         </h4>
                                         <small style="color:#64748b;">
                                             <?= ucfirst($ap['type']) ?> • <?= date('M j, Y', strtotime($ap['preferred_datetime'])) ?>
                                         </small>
+                                        <?php if (!empty($priest_name)): ?>
+                                            <div class="priest-badge">
+                                                <?php if ($priest_profile_pic && $priest_profile_pic != 'default.jpg'): ?>
+                                                    <img src="../uploads/profile_pics/<?= $priest_profile_pic ?>" alt="Priest">
+                                                <?php endif; ?>
+                                                <span>Assigned Priest: <?= htmlspecialchars($priest_name) ?></span>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                     <div>
                                         <span class="status-badge status-<?= htmlspecialchars($ap['status']) ?>">
@@ -489,7 +519,7 @@ $upcoming_appointments = $upcoming_stmt->fetchAll();
                                     </div>
                                     <div class="detail-row">
                                         <span class="detail-label">Chapel/Parish</span>
-                                        <span class="detail-value"><?= ucwords(str_replace('_', ' ', $ap['chapel'])) ?></span>
+                                        <span class="detail-value"><?= htmlspecialchars($ap['chapel'] ?? 'Not specified') ?></span>
                                     </div>
                                     <div class="detail-row">
                                         <span class="detail-label">Preferred Date & Time</span>
@@ -507,25 +537,30 @@ $upcoming_appointments = $upcoming_stmt->fetchAll();
                                         <span class="detail-label">Submitted On</span>
                                         <span class="detail-value"><?= date('M j, Y g:i A', strtotime($ap['requested_at'])) ?></span>
                                     </div>
-                                    <?php if ($ap['priest']): ?>
+                                    <?php if (!empty($priest_name)): ?>
                                     <div class="detail-row">
-                                        <span class="detail-label">Requested Priest</span>
-                                        <span class="detail-value"><?= ucwords(str_replace('_', ' ', $ap['priest'])) ?></span>
+                                        <span class="detail-label">Assigned Priest</span>
+                                        <span class="detail-value">
+                                            <?php if ($priest_profile_pic && $priest_profile_pic != 'default.jpg'): ?>
+                                                <img src="../uploads/profile_pics/<?= $priest_profile_pic ?>" alt="Priest" style="width:24px; height:24px; border-radius:50%; vertical-align:middle; margin-right:8px;">
+                                            <?php endif; ?>
+                                            <?= htmlspecialchars($priest_name) ?>
+                                        </span>
                                     </div>
                                     <?php endif; ?>
-                                    <?php if ($ap['purpose']): ?>
+                                    <?php if (!empty($ap['purpose'])): ?>
                                     <div class="notes-section">
                                         <div class="notes-title"><i class="fas fa-bullseye"></i> Purpose / Intention</div>
                                         <div class="notes-text"><?= nl2br(htmlspecialchars($ap['purpose'])) ?></div>
                                     </div>
                                     <?php endif; ?>
-                                    <?php if ($ap['notes']): ?>
+                                    <?php if (!empty($ap['notes'])): ?>
                                     <div class="notes-section">
                                         <div class="notes-title"><i class="fas fa-sticky-note"></i> Additional Notes</div>
                                         <div class="notes-text"><?= nl2br(htmlspecialchars($ap['notes'])) ?></div>
                                     </div>
                                     <?php endif; ?>
-                                    <?php if ($ap['address']): ?>
+                                    <?php if (!empty($ap['address'])): ?>
                                     <div class="notes-section">
                                         <div class="notes-title"><i class="fas fa-map-marker-alt"></i> Address (Blessing/Visit)</div>
                                         <div class="notes-text"><?= htmlspecialchars($ap['address']) ?></div>
@@ -569,6 +604,7 @@ $upcoming_appointments = $upcoming_stmt->fetchAll();
                         $date = new DateTime($up['preferred_datetime']);
                         $is_today = $date->format('Y-m-d') === date('Y-m-d');
                         $is_tomorrow = $date->format('Y-m-d') === date('Y-m-d', strtotime('+1 day'));
+                        $priest_name = $up['priest_name'] ?? $up['priest'] ?? 'Not assigned';
                     ?>
                         <div style="display:flex; justify-content:space-between; padding:14px 0; border-bottom:1px solid #f1f5f9; align-items:center;">
                             <div style="display:flex; gap:12px; align-items:center;">
@@ -577,7 +613,7 @@ $upcoming_appointments = $upcoming_stmt->fetchAll();
                                 </div>
                                 <div>
                                     <div style="font-weight:600; font-size:14px; color:#1e293b;">
-                                        <?= htmlspecialchars($up['fullname']) ?>
+                                        <?= htmlspecialchars($up['full_name'] ?? $up['fullname']) ?>
                                     </div>
                                     <small style="color:#64748b; display:block;">
                                         <?php if ($is_today): ?>
@@ -589,6 +625,11 @@ $upcoming_appointments = $upcoming_stmt->fetchAll();
                                         <?php endif; ?>
                                         <i class="far fa-clock" style="margin-left:10px;"></i> <?= $date->format('g:i A') ?>
                                     </small>
+                                    <?php if (!empty($priest_name) && $priest_name !== 'Not assigned'): ?>
+                                        <small style="color:#059669; display:block; margin-top:2px;">
+                                            <i class="fas fa-user-tie"></i> <?= htmlspecialchars($priest_name) ?>
+                                        </small>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                             <div style="text-align:right;">

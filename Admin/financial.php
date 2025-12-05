@@ -249,30 +249,54 @@ foreach ($transactions as $t) {
     <!-- HEADER -->
     <div class="top-header">
         <div class="header-left">
-            <i class="fas fa-arrow-left" style="font-size: 20px; color: #64748b; cursor: pointer;"></i>
+            <img src="../images/logo.png" alt="SJPL Logo">
+            <h3 style="color:#065f46; font-size:24px; font-weight:700;">San Jose Parish Laligan</h3>
         </div>
-        <div class="header-search">
-            <div class="search-box">
-                <i class="fas fa-search search-icon"></i>
-                <input type="text" placeholder="Search">
-                <i class="fas fa-microphone search-mic"></i>
-            </div>
-        </div>
+        
         <div class="header-right">
-            <div class="notification-bell"><i class="fas fa-bell"></i><span class="badge">1</span></div>
-            <i class="fas fa-chevron-down" style="color: #64748b; cursor: pointer;"></i>
-            <span style="font-weight: 600; color: #1e293b;"><?= htmlspecialchars($user_fullname) ?></span>
-            <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User" style="width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--green);">
+            <div class="notification-bell">
+                <i class="fas fa-bell"></i>
+                <span class="badge">3</span>
+            </div>
+            <a href="../logout.php" style="text-decoration: none;">
+            <div class="user-profile">
+                <span><?= htmlspecialchars($user_fullname) ?></span>
+                <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User">
+                <i class="fas fa-sign-out-alt"></i>
+            </div>
+            </a>
         </div>
+        <script>
+            // Toggle dropdown menu
+            function toggleDropdown() {
+                const dropdown = document.getElementById('userDropdown');
+                dropdown.classList.toggle('show');
+            }
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('userDropdown');
+                const profileContainer = document.querySelector('.user-profile-container');
+                
+                if (!profileContainer.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+
+            // Close dropdown on Escape key
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    document.getElementById('userDropdown').classList.remove('show');
+                }
+            });
+        </script>
     </div>
 
     <!-- MAIN LAYOUT -->
     <div class="main-layout">
         <!-- SIDEBAR -->
         <div class="sidebar">
-            <div class="logo">
-                <img src="../images/logo.png" alt="SJPL Logo">
-            </div>
+            
             <div class="nav-menu">
                 <a href="dashboard.php" style="text-decoration:none; color:inherit;"><div class="nav-item"><i class="fas fa-th-large"></i> Dashboard</div></a>
                 <a href="announcements.php" style="text-decoration:none; color:inherit;"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>

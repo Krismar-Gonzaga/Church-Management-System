@@ -7,13 +7,13 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     exit;
 }
 
-// Ensure only members can access (changed from 'member' check)
+// Ensure only priests can access
 if (($_SESSION['role'] ?? '') !== 'priest') {
     header('Location: ../login.php');
     exit;
 }
 
-$user_id = $_SESSION['user_id'] ?? 0; // Get member's user_id from session
+$user_id = $_SESSION['user_id'] ?? 0; // Get priest's user_id from session
 $user_fullname = $_SESSION['user'] ?? 'Priest';
 
 // Get current date parameters
@@ -36,19 +36,19 @@ if ($next_month > 12) {
     $next_year = $current_year + 1;
 }
 
-// Fetch the member's appointments for the current month
+// Fetch the priest's assigned appointments for the current month
 $month_start = date('Y-m-01', mktime(0, 0, 0, $current_month, 1, $current_year));
 $month_end = date('Y-m-t', mktime(0, 0, 0, $current_month, 1, $current_year));
 
-// MODIFIED QUERY: Only get appointments for the logged-in member
+// MODIFIED QUERY: Only get appointments assigned to this priest
 $stmt = $pdo->prepare("
     SELECT ar.*, u.fullname AS requester_name, u.phone, u.email,
            DATE(ar.preferred_datetime) as appointment_date,
            TIME(ar.preferred_datetime) as appointment_time
     FROM appointment_requests ar 
     JOIN users u ON ar.user_id = u.id 
-    WHERE ar.user_id = ?  -- Only show appointments for the logged-in member
-    AND ar.status = 'approved'
+    WHERE ar.priest_id = ?  -- Only show appointments assigned to this priest
+    AND ar.status = 'approved'  -- Only approved appointments
     AND DATE(ar.preferred_datetime) BETWEEN ? AND ?
     ORDER BY ar.preferred_datetime ASC
 ");
@@ -65,7 +65,7 @@ foreach ($appointments as $appointment) {
     $appointments_by_date[$date][] = $appointment;
 }
 
-// MODIFIED: Get appointment statistics for the member only
+// MODIFIED: Get appointment statistics for the priest only (assigned appointments)
 $stats_stmt = $pdo->prepare("
     SELECT 
         COUNT(*) as total_approved,
@@ -73,20 +73,20 @@ $stats_stmt = $pdo->prepare("
         MIN(DATE(preferred_datetime)) as first_appointment,
         MAX(DATE(preferred_datetime)) as last_appointment
     FROM appointment_requests 
-    WHERE user_id = ?  -- Only count member's appointments
-    AND status = 'approved'
+    WHERE priest_id = ?  -- Only count priest's assigned appointments
+    AND status = 'approved'  -- Only approved appointments
 ");
 $stats_stmt->execute([$user_id]);
 $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
 
-// MODIFIED: Fetch today's appointments for the member only
+// MODIFIED: Fetch today's appointments assigned to this priest only
 $today = date('Y-m-d');
 $today_stmt = $pdo->prepare("
     SELECT ar.*, u.fullname 
     FROM appointment_requests ar 
     JOIN users u ON ar.user_id = u.id 
-    WHERE ar.user_id = ?  -- Only today's appointments for the member
-    AND ar.status = 'approved'
+    WHERE ar.priest_id = ?  -- Only today's appointments for the priest
+    AND ar.status = 'approved'  -- Only approved appointments
     AND DATE(ar.preferred_datetime) = ?
     ORDER BY ar.preferred_datetime ASC
     LIMIT 5
@@ -94,12 +94,12 @@ $today_stmt = $pdo->prepare("
 $today_stmt->execute([$user_id, $today]);
 $today_appointments = $today_stmt->fetchAll();
 
-// MODIFIED: Get appointment type distribution for current month (member only)
+// MODIFIED: Get appointment type distribution for current month (priest only)
 $type_stmt = $pdo->prepare("
     SELECT type, COUNT(*) as count
     FROM appointment_requests 
-    WHERE user_id = ?  -- Only member's appointments
-    AND status = 'approved'
+    WHERE priest_id = ?  -- Only priest's assigned appointments
+    AND status = 'approved'  -- Only approved appointments
     AND DATE(preferred_datetime) BETWEEN ? AND ?
     GROUP BY type
     ORDER BY count DESC
@@ -159,7 +159,7 @@ if ($view === 'month') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SJPL | Calendar</title>
+    <title>SJPL | My Schedule Calendar</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
@@ -338,15 +338,15 @@ if ($view === 'month') {
             margin-top: 5px; max-height: 70px; overflow-y: auto;
         }
         .event-item {
-            background: #dbeafe; color: #1e40af; padding: 4px 6px;
+            background: #d1fae5; color: #065f46; padding: 4px 6px;
             border-radius: 6px; font-size: 11px; margin: 2px 0;
-            border-left: 3px solid #3b82f6; overflow: hidden;
+            border-left: 3px solid #059669; overflow: hidden;
             text-overflow: ellipsis; white-space: nowrap;
         }
         .event-item.baptism { background: #d1fae5; color: #065f46; border-left-color: #059669; }
         .event-item.wedding { background: #fce7f3; color: #be123c; border-left-color: #ec4899; }
         .event-item.mass_intention { background: #fef3c7; color: #92400e; border-left-color: #f59e0b; }
-        .event-item.confession { background: #e0e7ff; color: #3730a3; border-left-color: #6366f1; }
+        .event-item.confession { background: #dbeafe; color: #1d4ed8; border-left-color: #3b82f6; }
         .event-item.blessing { background: #f3e8ff; color: #6b21a8; border-left-color: #a855f7; }
 
         /* Right Sidebar */
@@ -361,6 +361,13 @@ if ($view === 'month') {
         .appointment-card {
             background: #f8fafc; border-radius: 12px; padding: 16px;
             margin-bottom: 12px; border-left: 4px solid #059669;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .appointment-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(5,150,105,0.1);
+            border-left-color: #047857;
         }
         .appointment-time {
             font-size: 13px; color: #64748b; margin-bottom: 5px;
@@ -396,7 +403,7 @@ if ($view === 'month') {
         .baptism-fill { background: #059669; }
         .wedding-fill { background: #ec4899; }
         .mass_intention-fill { background: #f59e0b; }
-        .confession-fill { background: #6366f1; }
+        .confession-fill { background: #3b82f6; }
         .blessing-fill { background: #a855f7; }
 
         /* Modal */
@@ -517,8 +524,8 @@ if ($view === 'month') {
             <div class="nav-menu">
                 <a href="dashboard.php"><div class="nav-item"><i class="fas fa-tachometer-alt"></i> Dashboard</div></a>
                 <a href="announcements.php"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>
-                <a href="calendar.php"><div class="nav-item active"><i class="fas fa-calendar"></i> Calendar</div></a>
-                <a href="appointments.php"><div class="nav-item"><i class="fas fa-clock"></i> Appointments</div></a>
+                <a href="calendar.php"><div class="nav-item active"><i class="fas fa-calendar"></i> My Schedule</div></a>
+                <a href="appointments.php"><div class="nav-item"><i class="fas fa-clock"></i> My Appointments</div></a>
                 <a href="financial.php"><div class="nav-item"><i class="fas fa-coins"></i> Financial</div></a>
                 <a href="profile.php"><div class="nav-item"><i class="fas fa-user"></i> My Profile</div></a>
                 <a href="support.php"><div class="nav-item"><i class="fas fa-question-circle"></i> Help & Support</div></a>
@@ -528,21 +535,21 @@ if ($view === 'month') {
         <!-- Main Content -->
         <div class="content-wrapper">
             <div class="main-calendar">
-                <h1 class="page-title">My Appointments Calendar</h1>
+                <h1 class="page-title">My Ministry Schedule Calendar</h1>
 
                 <!-- Statistics -->
                 <div class="stats-bar">
                     <div class="stat-card">
                         <div class="stat-value"><?= $stats['total_approved'] ?? 0 ?></div>
-                        <div class="stat-label">My Approved Appointments</div>
+                        <div class="stat-label">My Assigned Appointments</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value"><?= count($appointments) ?></div>
-                        <div class="stat-label">My Appointments This Month</div>
+                        <div class="stat-label">My Schedule This Month</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value"><?= count($appointments_by_date) ?></div>
-                        <div class="stat-label">My Busy Days This Month</div>
+                        <div class="stat-label">My Ministry Days</div>
                     </div>
                 </div>
 
@@ -602,7 +609,7 @@ if ($view === 'month') {
                                                 <?php foreach (array_slice($day_data['appointments'] ?? [], 0, 3) as $appt): ?>
                                                     <div class="event-item <?= $appt['type'] ?>" 
                                                          title="<?= htmlspecialchars($appt['requester_name']) ?> - <?= date('g:i A', strtotime($appt['appointment_time'])) ?>">
-                                                        <?= date('g:i', strtotime($appt['appointment_time'])) ?> - <?= htmlspecialchars($appt['type']) ?>
+                                                        <?= date('g:i', strtotime($appt['appointment_time'])) ?> - <?= htmlspecialchars($appt['requester_name']) ?>
                                                     </div>
                                                 <?php endforeach; ?>
                                                 <?php if ($appointment_count > 3): ?>
@@ -626,7 +633,7 @@ if ($view === 'month') {
             <div class="right-sidebar">
                 <!-- Today's Appointments -->
                 <div class="sidebar-section">
-                    <h3 class="section-title"><i class="fas fa-calendar-day"></i> My Today's Appointments</h3>
+                    <h3 class="section-title"><i class="fas fa-calendar-day"></i> My Today's Ministry</h3>
                     <?php if (!empty($today_appointments)): ?>
                         <?php foreach ($today_appointments as $appt): ?>
                             <div class="appointment-card" onclick="viewAppointmentDetails(<?= $appt['id'] ?>)">
@@ -640,14 +647,14 @@ if ($view === 'month') {
                     <?php else: ?>
                         <div class="empty-state">
                             <i class="fas fa-calendar-check"></i>
-                            <p>No appointments scheduled for today</p>
+                            <p>No ministry appointments scheduled for today</p>
                         </div>
                     <?php endif; ?>
                 </div>
 
                 <!-- Appointment Type Distribution -->
                 <div class="sidebar-section">
-                    <h3 class="section-title"><i class="fas fa-chart-pie"></i> My This Month's Distribution</h3>
+                    <h3 class="section-title"><i class="fas fa-chart-pie"></i> My Ministry Distribution</h3>
                     <?php if (!empty($type_distribution)): ?>
                         <?php foreach ($type_distribution as $type): ?>
                             <div class="type-bar">
@@ -665,22 +672,22 @@ if ($view === 'month') {
                     <?php else: ?>
                         <div class="empty-state" style="padding:20px 0;">
                             <i class="fas fa-chart-bar"></i>
-                            <p>No appointments this month</p>
+                            <p>No ministry appointments this month</p>
                         </div>
                     <?php endif; ?>
                 </div>
 
                 <!-- Quick Stats -->
                 <div class="sidebar-section">
-                    <h3 class="section-title"><i class="fas fa-chart-line"></i> My Calendar Stats</h3>
+                    <h3 class="section-title"><i class="fas fa-chart-line"></i> My Ministry Stats</h3>
                     <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:15px;">
                         <div style="text-align:center;">
                             <div style="font-size:24px; font-weight:700; color:#059669;"><?= $stats['total_approved'] ?? 0 ?></div>
-                            <div style="font-size:12px; color:#64748b;">My Approved</div>
+                            <div style="font-size:12px; color:#64748b;">My Ministry Appointments</div>
                         </div>
                         <div style="text-align:center;">
                             <div style="font-size:24px; font-weight:700; color:#f59e0b;"><?= $stats['days_with_appointments'] ?? 0 ?></div>
-                            <div style="font-size:12px; color:#64748b;">My Busy Days</div>
+                            <div style="font-size:12px; color:#64748b;">My Ministry Days</div>
                         </div>
                         <div style="text-align:center;">
                             <div style="font-size:24px; font-weight:700; color:#6366f1;"><?= count($appointments_by_date) ?></div>
@@ -688,7 +695,7 @@ if ($view === 'month') {
                         </div>
                         <div style="text-align:center;">
                             <div style="font-size:24px; font-weight:700; color:#ec4899;"><?= count($today_appointments) ?></div>
-                            <div style="font-size:12px; color:#64748b;">Today</div>
+                            <div style="font-size:12px; color:#64748b;">Today's Ministry</div>
                         </div>
                     </div>
                 </div>
@@ -700,7 +707,7 @@ if ($view === 'month') {
     <div id="dayModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="modalDayTitle">My Appointments</h2>
+                <h2 id="modalDayTitle">My Ministry Schedule</h2>
                 <button class="close-btn" onclick="closeDayModal()">&times;</button>
             </div>
             <div class="modal-body" id="dayAppointmentsList">
@@ -716,7 +723,7 @@ if ($view === 'month') {
     <div id="detailsModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>My Appointment Details</h2>
+                <h2>My Ministry Appointment Details</h2>
                 <button class="close-btn" onclick="closeDetailsModal()">&times;</button>
             </div>
             <div class="modal-body" id="appointmentDetails">
@@ -738,7 +745,7 @@ if ($view === 'month') {
 
         function viewDayAppointments(date, count) {
             if (count === 0) {
-                alert('No appointments scheduled for ' + date);
+                alert('No ministry appointments scheduled for ' + date);
                 return;
             }
 
@@ -752,7 +759,7 @@ if ($view === 'month') {
                 day: 'numeric'
             });
             
-            modalTitle.textContent = 'My Appointments for ' + formattedDate;
+            modalTitle.textContent = 'My Ministry Schedule for ' + formattedDate;
             
             let html = '';
             if (dayAppointments[date]) {
@@ -770,6 +777,8 @@ if ($view === 'month') {
                                     ${appt.type.replace(/_/g, ' ').toUpperCase()}
                                 </span>
                             </div>
+                            <div class="detail-label">Member</div>
+                            <div class="detail-value">${escapeHtml(appt.requester_name)}</div>
                             <div class="detail-label">Appointment Type</div>
                             <div class="detail-value">${appt.type.replace(/_/g, ' ').toUpperCase()}</div>
                             <div class="detail-label">Purpose</div>
@@ -778,7 +787,7 @@ if ($view === 'month') {
                     `;
                 });
             } else {
-                html = '<div class="empty-state"><p>No appointments for this date</p></div>';
+                html = '<div class="empty-state"><p>No ministry appointments for this date</p></div>';
             }
             
             appointmentsList.innerHTML = html;
@@ -805,7 +814,7 @@ if ($view === 'month') {
                     <div class="detail-value">${time}</div>
                 </div>
                 <div class="appointment-detail">
-                    <div class="detail-label">My Name</div>
+                    <div class="detail-label">Member Name</div>
                     <div class="detail-value">${escapeHtml(appointment.requester_name)}</div>
                 </div>
                 <div class="appointment-detail">
@@ -813,24 +822,22 @@ if ($view === 'month') {
                     <div class="detail-value">${appointment.type.replace(/_/g, ' ').toUpperCase()}</div>
                 </div>
                 <div class="appointment-detail">
+                    <div class="detail-label">Status</div>
+                    <div class="detail-value"><span style="color:#059669; font-weight:600;">✓ ASSIGNED TO YOU</span></div>
+                </div>
+                <div class="appointment-detail">
                     <div class="detail-label">Chapel/Parish</div>
                     <div class="detail-value">${appointment.chapel ? escapeHtml(appointment.chapel.replace(/_/g, ' ')) : 'Not specified'}</div>
                 </div>
-                ${appointment.priest ? `
-                <div class="appointment-detail">
-                    <div class="detail-label">Requested Priest</div>
-                    <div class="detail-value">${escapeHtml(appointment.priest.replace(/_/g, ' '))}</div>
-                </div>
-                ` : ''}
                 ${appointment.email ? `
                 <div class="appointment-detail">
-                    <div class="detail-label">My Email</div>
+                    <div class="detail-label">Member Email</div>
                     <div class="detail-value">${escapeHtml(appointment.email)}</div>
                 </div>
                 ` : ''}
                 ${appointment.phone ? `
                 <div class="appointment-detail">
-                    <div class="detail-label">My Phone</div>
+                    <div class="detail-label">Member Phone</div>
                     <div class="detail-value">${escapeHtml(appointment.phone)}</div>
                 </div>
                 ` : ''}
@@ -925,6 +932,12 @@ if ($view === 'month') {
                 `;
                 document.head.appendChild(style);
             }
+            
+            // Show appointment count tooltip
+            const eventCounts = document.querySelectorAll('.event-count');
+            eventCounts.forEach(count => {
+                count.title = 'My ministry appointments on this day';
+            });
         });
     </script>
 </body>

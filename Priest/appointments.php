@@ -7,7 +7,7 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     exit;
 }
 
-// Ensure only administrators can access
+// Ensure only priests can access
 if (($_SESSION['role'] ?? '') !== 'priest') {
     header('Location: ../login.php');
     exit;
@@ -20,69 +20,44 @@ $message = '';
 $message_type = '';
 
 // Handle Accept Appointment
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'accept') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $appointment_id = (int)($_POST['appointment_id'] ?? 0);
     
     if ($appointment_id > 0) {
         try {
-            $stmt = $pdo->prepare("UPDATE appointment_requests SET status = 'approved' WHERE id = ?");
-            if ($stmt->execute([$appointment_id])) {
-                $message = 'Appointment accepted successfully!';
-                $message_type = 'success';
-                // Refresh to show updated status
-                header("Location: appointments.php?message=accepted&page=" . ($_GET['page'] ?? 1));
-                exit;
-            } else {
-                $message = 'Failed to accept appointment';
+            $action = $_POST['action'];
+            
+            // MODIFIED: Verify appointment belongs to this priest
+            $verify_stmt = $pdo->prepare("SELECT id FROM appointment_requests WHERE id = ? AND priest_id = ?");
+            $verify_stmt->execute([$appointment_id, $user_id]);
+            
+            if (!$verify_stmt->fetch()) {
+                $message = 'You are not authorized to manage this appointment';
                 $message_type = 'error';
-            }
-        } catch (Exception $e) {
-            $message = 'Error: ' . $e->getMessage();
-            $message_type = 'error';
-        }
-    }
-}
-
-// Handle Reject Appointment
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'reject') {
-    $appointment_id = (int)($_POST['appointment_id'] ?? 0);
-    
-    if ($appointment_id > 0) {
-        try {
-            $stmt = $pdo->prepare("UPDATE appointment_requests SET status = 'rejected' WHERE id = ?");
-            if ($stmt->execute([$appointment_id])) {
-                $message = 'Appointment rejected successfully!';
-                $message_type = 'success';
-                // Refresh to show updated status
-                header("Location: appointments.php?message=rejected&page=" . ($_GET['page'] ?? 1));
-                exit;
             } else {
-                $message = 'Failed to reject appointment';
-                $message_type = 'error';
-            }
-        } catch (Exception $e) {
-            $message = 'Error: ' . $e->getMessage();
-            $message_type = 'error';
-        }
-    }
-}
-
-// Handle Reschedule
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'reschedule') {
-    $appointment_id = (int)($_POST['appointment_id'] ?? 0);
-    $new_datetime = $_POST['new_datetime'] ?? '';
-    
-    if ($appointment_id > 0 && !empty($new_datetime)) {
-        try {
-            $stmt = $pdo->prepare("UPDATE appointment_requests SET status = 'rescheduled', preferred_datetime = ?, updated_at = NOW() WHERE id = ?");
-            if ($stmt->execute([$new_datetime, $appointment_id])) {
-                $message = 'Appointment rescheduled successfully!';
-                $message_type = 'success';
-                header("Location: appointments.php?message=rescheduled&page=" . ($_GET['page'] ?? 1));
-                exit;
-            } else {
-                $message = 'Failed to reschedule appointment';
-                $message_type = 'error';
+                if ($action === 'accept') {
+                    $stmt = $pdo->prepare("UPDATE appointment_requests SET status = 'approved' WHERE id = ? AND priest_id = ?");
+                    $result = $stmt->execute([$appointment_id, $user_id]);
+                    $message = 'Appointment accepted successfully!';
+                } elseif ($action === 'reject') {
+                    $stmt = $pdo->prepare("UPDATE appointment_requests SET status = 'rejected' WHERE id = ? AND priest_id = ?");
+                    $result = $stmt->execute([$appointment_id, $user_id]);
+                    $message = 'Appointment rejected successfully!';
+                } elseif ($action === 'reschedule') {
+                    $new_datetime = $_POST['new_datetime'] ?? '';
+                    $stmt = $pdo->prepare("UPDATE appointment_requests SET status = 'rescheduled', preferred_datetime = ?, updated_at = NOW() WHERE id = ? AND priest_id = ?");
+                    $result = $stmt->execute([$new_datetime, $appointment_id, $user_id]);
+                    $message = 'Appointment rescheduled successfully!';
+                }
+                
+                if (isset($result) && $result) {
+                    $message_type = 'success';
+                    header("Location: appointments.php?message=" . $action . "&page=" . ($_GET['page'] ?? 1));
+                    exit;
+                } else {
+                    $message = 'Failed to process appointment';
+                    $message_type = 'error';
+                }
             }
         } catch (Exception $e) {
             $message = 'Error: ' . $e->getMessage();
@@ -94,15 +69,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // Handle message from redirect
 if (isset($_GET['message'])) {
     switch ($_GET['message']) {
-        case 'accepted':
+        case 'accept':
             $message = 'Appointment accepted successfully!';
             $message_type = 'success';
             break;
-        case 'rejected':
+        case 'reject':
             $message = 'Appointment rejected successfully!';
             $message_type = 'success';
             break;
-        case 'rescheduled':
+ case 'reschedule':
             $message = 'Appointment rescheduled successfully!';
             $message_type = 'success';
             break;
@@ -121,9 +96,9 @@ $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $limit = 8;
 $offset = ($page - 1) * $limit;
 
-// Build search conditions
-$where_conditions = [];
-$params = [];
+// Build search conditions - MODIFIED: Only show appointments assigned to this priest
+$where_conditions = ["ar.priest_id = ?"];
+$params = [$user_id];
 
 if ($status_filter !== 'all') {
     $where_conditions[] = "ar.status = ?";
@@ -136,8 +111,9 @@ if ($type_filter !== 'all') {
 }
 
 if (!empty($search_query)) {
-    $where_conditions[] = "(u.fullname LIKE ? OR ar.purpose LIKE ? OR ar.notes LIKE ?)";
+    $where_conditions[] = "(u.fullname LIKE ? OR ar.purpose LIKE ? OR ar.notes LIKE ? OR ar.chapel LIKE ?)";
     $search_term = "%$search_query%";
+    $params[] = $search_term;
     $params[] = $search_term;
     $params[] = $search_term;
     $params[] = $search_term;
@@ -153,20 +129,22 @@ if (!empty($date_to)) {
     $params[] = $date_to;
 }
 
-$where_clause = empty($where_conditions) ? '' : 'WHERE ' . implode(' AND ', $where_conditions);
+$where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
 
-// Get total count
+// Get total count - MODIFIED: Only count appointments assigned to this priest
 $count_query = "SELECT COUNT(*) FROM appointment_requests ar JOIN users u ON ar.user_id = u.id $where_clause";
 $count_stmt = $pdo->prepare($count_query);
 $count_stmt->execute($params);
 $total = $count_stmt->fetchColumn();
 
-// Fetch all appointments with filters and pagination
+// MODIFIED QUERY: Only show appointments assigned to this priest
 $query = "
     SELECT ar.*, u.fullname AS requester_name, u.profile_pic, u.email, u.phone,
+           p.fullname as priest_name, p.profile_pic as priest_profile_pic,
            (SELECT COUNT(*) FROM appointment_requests WHERE user_id = u.id) as user_total_appointments
     FROM appointment_requests ar 
     JOIN users u ON ar.user_id = u.id 
+    LEFT JOIN users p ON ar.priest_id = p.id 
     $where_clause
     ORDER BY ar.preferred_datetime DESC 
     LIMIT $limit OFFSET $offset
@@ -178,7 +156,7 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $total_pages = ceil($total / $limit);
 
-// Get statistics
+// Get statistics - MODIFIED: Only count appointments assigned to this priest
 $stats_query = "
     SELECT 
         COUNT(*) as total,
@@ -189,21 +167,27 @@ $stats_query = "
         SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
         COUNT(DISTINCT user_id) as unique_users
     FROM appointment_requests
+    WHERE priest_id = ?
 ";
-$stats = $pdo->query($stats_query)->fetch(PDO::FETCH_ASSOC);
+$stats_stmt = $pdo->prepare($stats_query);
+$stats_stmt->execute([$user_id]);
+$stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
 
-// Get upcoming appointments (next 7 days)
+// Get upcoming appointments (next 7 days) for this priest - MODIFIED: Only assigned to this priest
 $upcoming_query = "
     SELECT ar.*, u.fullname 
     FROM appointment_requests ar 
     JOIN users u ON ar.user_id = u.id 
     WHERE ar.status = 'approved' 
+    AND ar.priest_id = ?
     AND ar.preferred_datetime >= CURDATE() 
     AND ar.preferred_datetime <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
     ORDER BY ar.preferred_datetime ASC 
     LIMIT 5
 ";
-$upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
+$upcoming_stmt = $pdo->prepare($upcoming_query);
+$upcoming_stmt->execute([$user_id]);
+$upcoming_appointments = $upcoming_stmt->fetchAll();
 ?>
 
 <!DOCTYPE html>
@@ -211,7 +195,7 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SJPL | Appointments</title>
+    <title>SJPL | My Appointments</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
@@ -276,6 +260,7 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
         .stat-value.pending { color: #f59e0b; }
         .stat-value.approved { color: #10b981; }
         .stat-value.rejected { color: #ef4444; }
+        .stat-value.my { color: #8b5cf6; }
         .stat-label { font-size: 14px; color: #64748b; font-weight: 500; }
 
         .filter-bar {
@@ -342,9 +327,20 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
         .notes-title { font-weight: 600; color: var(--green); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
         .notes-text { color: #475569; line-height: 1.6; font-size: 14px; }
 
+        /* Priest Assignment Status */
+        .priest-status {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 10px; border-radius: 8px; font-size: 13px;
+            font-weight: 600; margin-top: 5px;
+        }
+        .priest-assigned-to-me {
+            background: #d1fae5; color: #065f46;
+            border: 2px solid #059669;
+        }
+
         .card-actions {
             position: absolute; bottom: 24px; right: 24px;
-            display: flex; gap: 10px;
+            display: flex; gap: 10px; flex-wrap: wrap;
         }
         .btn-accept, .btn-reject, .btn-reschedule, .btn-view {
             padding: 10px 20px; border: none; border-radius: 12px;
@@ -467,6 +463,7 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
             .right-sidebar { width: 100%; position: static; }
             .filter-bar { flex-direction: column; align-items: flex-start; }
             .stats-bar { flex-direction: column; }
+            .card-actions { position: static; margin-top: 20px; }
         }
     </style>
 </head>
@@ -497,30 +494,6 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
             </div>
             </a>
         </div>
-        <script>
-            // Toggle dropdown menu
-            function toggleDropdown() {
-                const dropdown = document.getElementById('userDropdown');
-                dropdown.classList.toggle('show');
-            }
-
-            // Close dropdown when clicking outside
-            document.addEventListener('click', function(event) {
-                const dropdown = document.getElementById('userDropdown');
-                const profileContainer = document.querySelector('.user-profile-container');
-                
-                if (!profileContainer.contains(event.target)) {
-                    dropdown.classList.remove('show');
-                }
-            });
-
-            // Close dropdown on Escape key
-            document.addEventListener('keydown', function(event) {
-                if (event.key === 'Escape') {
-                    document.getElementById('userDropdown').classList.remove('show');
-                }
-            });
-        </script>
     </div>
 
     <!-- SIDEBAR -->
@@ -530,7 +503,7 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
                 <a href="dashboard.php"><div class="nav-item"><i class="fas fa-tachometer-alt"></i> Dashboard</div></a>
                 <a href="announcements.php"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>
                 <a href="calendar.php"><div class="nav-item"><i class="fas fa-calendar"></i> Calendar</div></a>
-                <a href="appointments.php"><div class="nav-item active"><i class="fas fa-clock"></i> Appointments</div></a>
+                <a href="appointments.php"><div class="nav-item active"><i class="fas fa-clock"></i> My Appointments</div></a>
                 <a href="financial.php"><div class="nav-item"><i class="fas fa-coins"></i> Financial</div></a>
                 <a href="profile.php"><div class="nav-item"><i class="fas fa-user"></i> My Profile</div></a>
                 <a href="support.php"><div class="nav-item"><i class="fas fa-question-circle"></i> Help & Support</div></a>
@@ -540,7 +513,7 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
         <!-- MAIN CONTENT -->
         <div class="content-wrapper">
             <div class="center-content">
-                <h1 class="page-title">All Appointments</h1>
+                <h1 class="page-title">My Appointments</h1>
 
                 <?php if ($message): ?>
                     <div class="alert alert-<?= $message_type === 'success' ? 'success' : 'error' ?>">
@@ -553,7 +526,7 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
                 <div class="stats-bar">
                     <div class="stat-card">
                         <div class="stat-value total"><?= $stats['total'] ?? 0 ?></div>
-                        <div class="stat-label">Total Appointments</div>
+                        <div class="stat-label">My Appointments</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value pending"><?= $stats['pending'] ?? 0 ?></div>
@@ -564,8 +537,8 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
                         <div class="stat-label">Approved</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value rejected"><?= $stats['rejected'] ?? 0 ?></div>
-                        <div class="stat-label">Rejected</div>
+                        <div class="stat-value"><?= $stats['unique_users'] ?? 0 ?></div>
+                        <div class="stat-label">Unique Members</div>
                     </div>
                 </div>
 
@@ -632,18 +605,18 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
                     <?php if (empty($appointments)): ?>
                         <div style="text-align:center; padding:100px 20px; background:white; border-radius:20px; color:#94a3b8;">
                             <i class="fas fa-calendar-times" style="font-size:48px; margin-bottom:16px; color:#cbd5e1;"></i>
-                            <p style="font-size:18px; margin-bottom:10px;">No appointment requests found.</p>
+                            <p style="font-size:18px; margin-bottom:10px;">No appointments assigned to you.</p>
                             <?php if (!empty($search_query) || $status_filter !== 'all' || $type_filter !== 'all'): ?>
                                 <p style="color:#64748b; font-size:14px;">Try adjusting your filters or search criteria.</p>
                             <?php else: ?>
-                                <p style="color:#64748b; font-size:14px;">Check back later for new appointment requests.</p>
+                                <p style="color:#64748b; font-size:14px;">You have no appointments assigned to you at this time.</p>
                             <?php endif; ?>
                         </div>
                     <?php else: ?>
                         <?php foreach ($appointments as $ap): ?>
                             <div class="appointment-card" id="appointment-<?= $ap['id'] ?>">
                                 <div class="card-header">
-                                    <img src="<?= $ap['profile_pic'] ? '../uploads/'.$ap['profile_pic'] : 'https://via.placeholder.com/52/059669/ffffff?text='.substr($ap['requester_name'],0,1) ?>" alt="User">
+                                    <img src="<?= !empty($ap['profile_pic']) && $ap['profile_pic'] != 'default.jpg' ? '../uploads/profile_pics/'.$ap['profile_pic'] : 'https://via.placeholder.com/52/059669/ffffff?text='.substr($ap['requester_name'],0,1) ?>" alt="User">
                                     <div class="user-info">
                                         <div class="user-name"><?= htmlspecialchars($ap['requester_name']) ?></div>
                                         <div class="user-meta">
@@ -652,6 +625,10 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
                                                 <span style="margin-left:15px;"><i class="fas fa-phone"></i> <?= htmlspecialchars($ap['phone']) ?></span>
                                             <?php endif; ?>
                                             <span style="margin-left:15px;"><i class="fas fa-calendar-check"></i> Total Appointments: <?= $ap['user_total_appointments'] ?></span>
+                                        </div>
+                                        <!-- Priest Assignment Status -->
+                                        <div class="priest-status priest-assigned-to-me">
+                                            <i class="fas fa-user-tie"></i> Assigned to you
                                         </div>
                                     </div>
                                     <div>
@@ -668,7 +645,7 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
                                     </div>
                                     <div class="detail-row">
                                         <span class="detail-label">Chapel/Parish</span>
-                                        <span class="detail-value"><?= ucwords(str_replace('_', ' ', $ap['chapel'])) ?></span>
+                                        <span class="detail-value"><?= htmlspecialchars($ap['chapel']) ?></span>
                                     </div>
                                     <div class="detail-row">
                                         <span class="detail-label">Preferred Date & Time</span>
@@ -681,12 +658,6 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
                                         <span class="detail-label">Submitted On</span>
                                         <span class="detail-value"><?= date('M j, Y g:i A', strtotime($ap['requested_at'])) ?></span>
                                     </div>
-                                    <?php if ($ap['priest']): ?>
-                                    <div class="detail-row">
-                                        <span class="detail-label">Requested Priest</span>
-                                        <span class="detail-value"><?= ucwords(str_replace('_', ' ', $ap['priest'])) ?></span>
-                                    </div>
-                                    <?php endif; ?>
                                     <?php if ($ap['purpose']): ?>
                                     <div class="notes-section">
                                         <div class="notes-title"><i class="fas fa-bullseye"></i> Purpose / Intention</div>
@@ -761,7 +732,7 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
             <!-- RIGHT SIDEBAR - UPCOMING APPOINTMENTS -->
             <div class="right-sidebar">
                 <h3 style="color:#065f46; font-size:21px; margin-bottom:20px; display:flex; align-items:center; gap:10px;">
-                    <i class="fas fa-calendar-check"></i> Upcoming Appointments
+                    <i class="fas fa-calendar-check"></i> My Upcoming Appointments
                     <span style="font-size:14px; color:#64748b; font-weight:normal;">(Next 7 Days)</span>
                 </h3>
                 
@@ -786,6 +757,9 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
                                 <div style="font-size:13px; font-weight:600; color:#059669;">
                                     <?= ucfirst($up['type']) ?>
                                 </div>
+                                <span class="status-badge status-approved" style="font-size:11px; padding:4px 10px;">
+                                    Approved
+                                </span>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -802,12 +776,20 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
                     </h4>
                     <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:12px;">
                         <div style="background:#f8fafc; padding:12px; border-radius:10px; text-align:center;">
-                            <div style="font-size:20px; font-weight:700; color:var(--green);"><?= $stats['unique_users'] ?? 0 ?></div>
-                            <div style="font-size:12px; color:#64748b;">Unique Users</div>
+                            <div style="font-size:20px; font-weight:700; color:var(--green);"><?= $stats['total'] ?? 0 ?></div>
+                            <div style="font-size:12px; color:#64748b;">My Appointments</div>
                         </div>
                         <div style="background:#f8fafc; padding:12px; border-radius:10px; text-align:center;">
                             <div style="font-size:20px; font-weight:700; color:#f59e0b;"><?= $stats['pending'] ?? 0 ?></div>
                             <div style="font-size:12px; color:#64748b;">Needs Action</div>
+                        </div>
+                        <div style="background:#f8fafc; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:20px; font-weight:700; color:#8b5cf6;"><?= $stats['approved'] ?? 0 ?></div>
+                            <div style="font-size:12px; color:#64748b;">Approved</div>
+                        </div>
+                        <div style="background:#f8fafc; padding:12px; border-radius:10px; text-align:center;">
+                            <div style="font-size:20px; font-weight:700; color:#ec4899;"><?= count($upcoming_appointments) ?></div>
+                            <div style="font-size:12px; color:#64748b;">Upcoming</div>
                         </div>
                     </div>
                 </div>

@@ -370,22 +370,13 @@ $roles = ['admin', 'priest', 'secretary', 'treasurer', 'member'];
             font-size: 18px;
             pointer-events: none;
         }
-        .notification-bell { position:relative; font-size:23px; color:#64748b; cursor:pointer; }
-        .notification-bell .badge {
-            position:absolute; top:-8px; right:-8px;
-            background:#ef4444; color:white; font-size:10px;
-            width:19px; height:19px; border-radius:50%;
-            display:flex; align-items:center; justify-content:center; font-weight:bold;
-        }
-        .profile-pill {
-            display:flex; align-items:center; gap:10px;
-            background:#f0fdf4; padding:10px 18px; border-radius:14px;
-            border:1px solid #d1fae5;
-            cursor: pointer;
-        }
-        .profile-pill img {
-            width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--green);
-        }
+        .header-right { display: flex; align-items: center; gap: 20px; }
+        .notification-bell { position: relative; font-size: 23px; color: #64748b; cursor: pointer; }
+        .notification-bell .badge { position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; font-size: 10px; width: 19px; height: 19px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .user-profile { display: flex; align-items: center; gap: 12px; background: #f0fdf4; padding: 10px 18px; border-radius: 14px; border: 1px solid #d1fae5; cursor: pointer; }
+        .user-profile:hover { background: #d1fae5; }
+        .user-profile img { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #059669; }
+        .user-profile span { font-weight: 600; color: #065f46; }
 
         .main-layout {
             display: flex; margin-top: 80px;
@@ -955,13 +946,40 @@ $roles = ['admin', 'priest', 'secretary', 'treasurer', 'member'];
         <div class="header-right">
             <div class="notification-bell">
                 <i class="fas fa-bell"></i>
-                <span class="badge"><?= $stats['inactive'] ?? 0 ?></span>
+                <span class="badge">3</span>
             </div>
-            <div class="profile-pill" onclick="window.location.href='profile.php'">
+            <a href="../logout.php" style="text-decoration: none;">
+            <div class="user-profile">
                 <span><?= htmlspecialchars($user_fullname) ?></span>
-                <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="Admin">
+                <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User">
+                <i class="fas fa-sign-out-alt"></i>
             </div>
+            </a>
         </div>
+        <script>
+            // Toggle dropdown menu
+            function toggleDropdown() {
+                const dropdown = document.getElementById('userDropdown');
+                dropdown.classList.toggle('show');
+            }
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('userDropdown');
+                const profileContainer = document.querySelector('.user-profile-container');
+                
+                if (!profileContainer.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+
+            // Close dropdown on Escape key
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    document.getElementById('userDropdown').classList.remove('show');
+                }
+            });
+        </script>
     </div>
 
     <div class="main-layout">

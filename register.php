@@ -24,6 +24,51 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    
+
+
+    CREATE TABLE IF NOT EXISTS announcements (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        title VARCHAR(255),
+        message TEXT,
+        posted_by INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (posted_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS appointment_requests (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT,
+        priest_id INT,
+        full_name VARCHAR(255),
+        email VARCHAR(255),
+        phone VARCHAR(50),
+        chapel VARCHAR(100),
+        priest VARCHAR(100),
+        type VARCHAR(100),
+        purpose TEXT,
+        preferred_datetime DATETIME,
+        notes TEXT,
+        address TEXT,
+        status VARCHAR(50) DEFAULT 'pending',
+        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (priest_id) REFERENCES users(id)
+    );
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     INSERT INTO users (fullname, email, password, role) VALUES 
     ('SJPL Administrator', 'admin@sjpl.org', '\$2y\$10\$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin');

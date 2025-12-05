@@ -14,6 +14,7 @@ if (($_SESSION['role'] ?? '') !== 'admin') {
 }
 
 $user_id = $_SESSION['user_id'] ?? 0;
+$user_fullname = $_SESSION['user'] ?? 'Administrator';
 $message = '';
 $message_type = '';
 
@@ -650,12 +651,38 @@ $sacraments = ['Baptism', 'Confirmation', 'First Communion', 'Matrimony', 'Anoin
                 <i class="fas fa-bell"></i>
                 <span class="badge">3</span>
             </div>
+            <a href="../logout.php" style="text-decoration: none;">
             <div class="user-profile">
-                <span><?= htmlspecialchars($user['fullname']) ?></span>
-                <img src="<?= $user['profile_pic'] ? '../uploads/profile_pics/'.$user['profile_pic'] : 'https://via.placeholder.com/44/059669/ffffff?text='.substr($user['fullname'],0,1) ?>" alt="User">
-                <i class="fas fa-caret-down"></i>
+                <span><?= htmlspecialchars($user_fullname) ?></span>
+                <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User">
+                <i class="fas fa-sign-out-alt"></i>
             </div>
+            </a>
         </div>
+        <script>
+            // Toggle dropdown menu
+            function toggleDropdown() {
+                const dropdown = document.getElementById('userDropdown');
+                dropdown.classList.toggle('show');
+            }
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('userDropdown');
+                const profileContainer = document.querySelector('.user-profile-container');
+                
+                if (!profileContainer.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+
+            // Close dropdown on Escape key
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    document.getElementById('userDropdown').classList.remove('show');
+                }
+            });
+        </script>
     </div>
 
     <!-- SIDEBAR -->

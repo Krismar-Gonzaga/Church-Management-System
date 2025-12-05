@@ -8,10 +8,21 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
 }
 
 $user_fullname = $_SESSION['user'] ?? 'Member';
+$user_id = $_SESSION['user_id'] ?? 0;
+$user_role = $_SESSION['role'] ?? 'member';
 
-// Fetch data
+// Fetch announcements (public announcements for all users)
 $announcements = $pdo->query("SELECT a.*, u.fullname FROM announcements a JOIN users u ON a.posted_by = u.id ORDER BY a.created_at DESC LIMIT 10")->fetchAll();
-$appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM appointment_requests ar JOIN users u ON ar.user_id = u.id ORDER BY ar.requested_at DESC LIMIT 8")->fetchAll();
+
+// MODIFIED: Fetch ONLY this member's appointments
+$appointments = $pdo->prepare("SELECT ar.*, u.fullname, ar.type, ar.status 
+                              FROM appointment_requests ar 
+                              JOIN users u ON ar.user_id = u.id 
+                              WHERE ar.user_id = ? 
+                              ORDER BY ar.requested_at DESC 
+                              LIMIT 8");
+$appointments->execute([$user_id]);
+$appointments = $appointments->fetchAll();
 ?>
 
 <!DOCTYPE html>
@@ -341,12 +352,38 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
                 <i class="fas fa-bell"></i>
                 <span class="badge">3</span>
             </div>
+            <a href="../logout.php" style="text-decoration: none;">
             <div class="user-profile">
                 <span><?= htmlspecialchars($user_fullname) ?></span>
                 <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User">
-                <i class="fas fa-caret-down dropdown-arrow"></i>
+                <i class="fas fa-sign-out-alt"></i>
             </div>
+            </a>
         </div>
+        <script>
+            // Toggle dropdown menu
+            function toggleDropdown() {
+                const dropdown = document.getElementById('userDropdown');
+                dropdown.classList.toggle('show');
+            }
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('userDropdown');
+                const profileContainer = document.querySelector('.user-profile-container');
+                
+                if (!profileContainer.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+
+            // Close dropdown on Escape key
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    document.getElementById('userDropdown').classList.remove('show');
+                }
+            });
+        </script>
     </div>
 
     <!-- Main Layout -->
@@ -358,7 +395,7 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
                 <a href="dashboard.php"><div class="nav-item active"><i class="fas fa-tachometer-alt"></i> Dashboard</div></a>
                 <a href="announcements.php"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>
                 <a href="calendar.php"><div class="nav-item"><i class="fas fa-calendar"></i> Calendar</div></a>
-                <a href="appointments.php"><div class="nav-item"><i class="fas fa-clock"></i> Appointments</div></a>
+                <a href="appointments.php"><div class="nav-item"><i class="fas fa-clock"></i> My Appointments</div></a>
                 <a href="financial.php"><div class="nav-item"><i class="fas fa-coins"></i> Financial</div></a>
                 <a href="profile.php"><div class="nav-item"><i class="fas fa-user"></i> My Profile</div></a>
                 <div class="nav-item"><i class="fas fa-question-circle"></i> Help & Support</div>
@@ -398,69 +435,83 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
             <!-- Right Sidebar: Appointments -->
             <div class="right-sidebar">
                 <div class="sidebar-title">
-                    Appointment Requests
+                    My Appointments
                     <span style="font-size:15px; color:#64748b; font-weight:normal;">(<?= count($appointments) ?>)</span>
                 </div>
-                <?php foreach ($appointments as $ap): ?>
-                
-                <div class="appointment-item">
-                    <div class="appointment-card">
-                        <div class="appointment-header">
-                            <h4><?= htmlspecialchars($ap['fullname']) ?></h4>
-                        
-                        </div>
-                        <Style>
-                            .appointment-date{
-                                justify-content: right;
-                                margin-top: -20px;
-                                margin-left: 210px;
-                            }
-                        </Style>
-                        <div class="appointment-date">
-                            <?= date('M j, Y • g:i A', strtotime($ap['requested_at'])) ?>
-                        </div>
-                        <Style>
-                            .appointment-type{
-                                justify-content: left;
-                                margin-top: 20px;
-                                margin-bottom: 10px;
-                            }
-                        </Style>
-                        <div class="appointment-type">
-                            <strong>Type:</strong> <?= ucfirst($ap['type']) ?>
-                        </div>
-                        <style>
-                            .btn-view{
-                                margin-top: 10px;
-                                color:#475569; 
-                                line-height:1.6;
-                                height:30px;
-                                margin-left: 250px;
-                                overflow:hidden;
-                                text-overflow: ellipsis;
-                                justify-content: right;
-                            }
-                        </style>
-                        <button class="btn-view">
-                            <i class="fas fa-eye"></i> View Full Text
-                        </button>
-                        <Style>
-                            .status{
-                                margin-top: 10px;
-                                margin-left: 150px;
-                                margin-bottom: -25px;
-                            }
-                        </Style>
-                            
-                            <span class="status status"-<?= $ap['status'] === 'rescheduled' ? 'rescheduled' : strtolower($ap['status']) ?>">
-                                <?= ucfirst($ap['status']) ?>
-                            </span>
+                <?php if (empty($appointments)): ?>
+                    <div style="text-align:center; padding:40px 20px; color:#94a3b8;">
+                        <i class="fas fa-calendar-plus" style="font-size:48px; margin-bottom:16px; opacity:0.3;"></i>
+                        <p>You have no appointment requests yet.</p>
+                        <p style="font-size:14px; margin-top:10px;">
+                            <a href="requestAppointments.php" style="color:#059669; text-decoration:none;">
+                                <i class="fas fa-plus-circle"></i> Request your first appointment
+                            </a>
+                        </p>
                     </div>
-                </div>
-                <?php endforeach; ?>
-                <div style="text-align:center; margin-top:28px; color:#059669; font-weight:600; cursor:pointer; font-size:15px;">
-                    <i class="fas fa-chevron-down"></i> Discover All
-                </div>
+                <?php else: ?>
+                    <?php foreach ($appointments as $ap): ?>
+                    
+                    <div class="appointment-item">
+                        <div class="appointment-card">
+                            <div class="appointment-header">
+                                <h4><?= htmlspecialchars($ap['fullname']) ?></h4>
+                            
+                            </div>
+                            <Style>
+                                .appointment-date{
+                                    justify-content: right;
+                                    margin-top: -20px;
+                                    margin-left: 210px;
+                                }
+                            </Style>
+                            <div class="appointment-date">
+                                <?= date('M j, Y • g:i A', strtotime($ap['requested_at'])) ?>
+                            </div>
+                            <Style>
+                                .appointment-type{
+                                    justify-content: left;
+                                    margin-top: 20px;
+                                    margin-bottom: 10px;
+                                }
+                            </Style>
+                            <div class="appointment-type">
+                                <strong>Type:</strong> <?= ucfirst($ap['type']) ?>
+                            </div>
+                            <style>
+                                .btn-view{
+                                    margin-top: 10px;
+                                    color:#475569; 
+                                    line-height:1.6;
+                                    height:30px;
+                                    margin-left: 250px;
+                                    overflow:hidden;
+                                    text-overflow: ellipsis;
+                                    justify-content: right;
+                                }
+                            </style>
+                            <button class="btn-view" onclick="window.location.href='appointments.php'">
+                                <i class="fas fa-eye"></i> View Details
+                            </button>
+                            <Style>
+                                .status{
+                                    margin-top: 10px;
+                                    margin-left: 150px;
+                                    margin-bottom: -25px;
+                                }
+                            </Style>
+                                
+                                <span class="status status-<?= $ap['status'] === 'rescheduled' ? 'rescheduled' : strtolower($ap['status']) ?>">
+                                    <?= ucfirst($ap['status']) ?>
+                                </span>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                    <div style="text-align:center; margin-top:28px; color:#059669; font-weight:600; cursor:pointer; font-size:15px;">
+                        <a href="appointments.php" style="color:#059669; text-decoration:none;">
+                            <i class="fas fa-chevron-down"></i> View All My Appointments
+                        </a>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>

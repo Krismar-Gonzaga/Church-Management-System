@@ -12,10 +12,23 @@ if (!in_array($_SESSION['role'] ?? '', ['priest'])) {
 }
 
 $user_fullname = $_SESSION['user'] ?? 'priest';
+$user_id = $_SESSION['user_id'] ?? 0; // Get priest's user_id from session
 
 // Fetch data
 $announcements = $pdo->query("SELECT a.*, u.fullname FROM announcements a JOIN users u ON a.posted_by = u.id ORDER BY a.created_at DESC LIMIT 10")->fetchAll();
-$appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM appointment_requests ar JOIN users u ON ar.user_id = u.id ORDER BY ar.requested_at DESC LIMIT 8")->fetchAll();
+
+// MODIFIED QUERY: Only show appointments assigned to this priest or pending appointments
+$appointments = $pdo->prepare("
+    SELECT ar.*, u.fullname, ar.type, ar.status 
+    FROM appointment_requests ar 
+    JOIN users u ON ar.user_id = u.id 
+    WHERE (ar.priest_id = ? OR ar.priest_id IS NULL)  -- Show appointments assigned to this priest OR unassigned
+    AND ar.status IN ('pending', 'approved')  -- Only show pending and approved appointments
+    ORDER BY ar.requested_at DESC 
+    LIMIT 8
+");
+$appointments->execute([$user_id]);
+$appointments = $appointments->fetchAll();
 ?>
 
 <!DOCTYPE html>
@@ -23,7 +36,7 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SJPL | Dashboard</title>
+    <title>SJPL | Priest Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
@@ -253,6 +266,7 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
         .status-cancelled { background: #fee2e2; color: #991b1b; }
         .status-rejected { background: #fce7f3; color: #be123c; }
         .status-rescheduled { background: #dbeafe; color: #1d4ed8; }
+        .status-pending { background: #fef3c7; color: #92400e; }
         .btn-view {
             background: #e2e8f0; color: #475569; padding: 7px 14px; border-radius: 10px;
             font-size: 12px; border: none; cursor: pointer; font-weight: 500;
@@ -363,8 +377,8 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
             <div class="nav-menu">
                 <a href="dashboard.php"><div class="nav-item active"><i class="fas fa-tachometer-alt"></i> Dashboard</div></a>
                 <a href="announcements.php"><div class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</div></a>
-                <a href="calendar.php"><div class="nav-item"><i class="fas fa-calendar"></i> Calendar</div></a>
-                <a href="appointments.php"><div class="nav-item"><i class="fas fa-clock"></i> Appointments</div></a>
+                <a href="calendar.php"><div class="nav-item"><i class="fas fa-calendar"></i> My Schedule</div></a>
+                <a href="appointments.php"><div class="nav-item"><i class="fas fa-clock"></i> My Appointments</div></a>
                 <a href="financial.php"><div class="nav-item"><i class="fas fa-coins"></i> Financial</div></a>
                 <a href="profile.php"><div class="nav-item"><i class="fas fa-user"></i> My Profile</div></a>
                 <div class="nav-item"><i class="fas fa-question-circle"></i> Help & Support</div>
@@ -375,7 +389,7 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
         <div class="content-area">
             <!-- Center: Announcements -->
             <div class="center-area">
-                <h1 class="page-title">Dashboard</h1>
+                <h1 class="page-title">Priest Dashboard</h1>
                 <div class="section">
                     <h2 style="margin-bottom:24px; color:#065f46; font-size:22px;">Announcements</h2>
                     <?php foreach ($announcements as $a): ?>
@@ -404,69 +418,96 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
             <!-- Right Sidebar: Appointments -->
             <div class="right-sidebar">
                 <div class="sidebar-title">
-                    Appointment Requests
+                    My Ministry Requests
                     <span style="font-size:15px; color:#64748b; font-weight:normal;">(<?= count($appointments) ?>)</span>
                 </div>
-                <?php foreach ($appointments as $ap): ?>
-                
-                <div class="appointment-item">
-                    <div class="appointment-card">
-                        <div class="appointment-header">
-                            <h4><?= htmlspecialchars($ap['fullname']) ?></h4>
-                        
-                        </div>
-                        <Style>
-                            .appointment-date{
-                                justify-content: right;
-                                margin-top: -20px;
-                                margin-left: 210px;
-                            }
-                        </Style>
-                        <div class="appointment-date">
-                            <?= date('M j, Y • g:i A', strtotime($ap['requested_at'])) ?>
-                        </div>
-                        <Style>
-                            .appointment-type{
-                                justify-content: left;
-                                margin-top: 20px;
-                                margin-bottom: 10px;
-                            }
-                        </Style>
-                        <div class="appointment-type">
-                            <strong>Type:</strong> <?= ucfirst($ap['type']) ?>
-                        </div>
-                        <style>
-                            .btn-view{
-                                margin-top: 10px;
-                                color:#475569; 
-                                line-height:1.6;
-                                height:30px;
-                                margin-left: 250px;
-                                overflow:hidden;
-                                text-overflow: ellipsis;
-                                justify-content: right;
-                            }
-                        </style>
-                        <button class="btn-view">
-                            <i class="fas fa-eye"></i> View Full Text
-                        </button>
-                        <Style>
-                            .status{
-                                margin-top: 10px;
-                                margin-left: 150px;
-                                margin-bottom: -25px;
-                            }
-                        </Style>
+                <?php if (empty($appointments)): ?>
+                    <div style="text-align:center; padding:40px 20px; color:#94a3b8;">
+                        <i class="fas fa-calendar-plus" style="font-size:48px; margin-bottom:16px; opacity:0.3;"></i>
+                        <p>No ministry requests for you at this time.</p>
+                        <p style="font-size:14px; margin-top:10px;">Check back later for new appointment requests.</p>
+                    </div>
+                <?php else: ?>
+                    <?php foreach ($appointments as $ap): 
+                        // Determine if appointment is assigned to this priest or unassigned
+                        $is_assigned = !empty($ap['priest_id']) && $ap['priest_id'] == $user_id;
+                        $is_unassigned = empty($ap['priest_id']);
+                    ?>
+                    
+                    <div class="appointment-item">
+                        <div class="appointment-card">
+                            <div class="appointment-header">
+                                <h4><?= htmlspecialchars($ap['fullname']) ?></h4>
+                                <?php if ($is_assigned): ?>
+                                    <span style="position:absolute; top:10px; right:10px; background:#059669; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600;">
+                                        <i class="fas fa-user-tie"></i> Assigned to you
+                                    </span>
+                                <?php elseif ($is_unassigned): ?>
+                                    <span style="position:absolute; top:10px; right:10px; background:#f59e0b; color:#92400e; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600;">
+                                        <i class="fas fa-clock"></i> Unassigned
+                                    </span>
+                                <?php endif; ?>
+                            </div>
+                            <Style>
+                                .appointment-date{
+                                    justify-content: right;
+                                    margin-top: -20px;
+                                    margin-left: 210px;
+                                }
+                            </Style>
+                            <div class="appointment-date">
+                                <?= date('M j, Y • g:i A', strtotime($ap['requested_at'])) ?>
+                            </div>
+                            <Style>
+                                .appointment-type{
+                                    justify-content: left;
+                                    margin-top: 20px;
+                                    margin-bottom: 10px;
+                                }
+                            </Style>
+                            <div class="appointment-type">
+                                <strong>Type:</strong> <?= ucfirst($ap['type']) ?>
+                            </div>
+                            <style>
+                                .btn-view{
+                                    margin-top: 10px;
+                                    color:#475569; 
+                                    line-height:1.6;
+                                    height:30px;
+                                    margin-left: 250px;
+                                    overflow:hidden;
+                                    text-overflow: ellipsis;
+                                    justify-content: right;
+                                    cursor: pointer;
+                                }
+                                .btn-view:hover {
+                                    background: #d1fae5;
+                                    color: #065f46;
+                                }
+                            </style>
+                            <button class="btn-view" onclick="window.location.href='appointments.php'">
+                                <i class="fas fa-eye"></i> Manage Request
+                            </button>
+                            <Style>
+                                .status{
+                                    margin-top: 10px;
+                                    margin-left: 150px;
+                                    margin-bottom: -25px;
+                                }
+                            </Style>
                             
-                            <span class="status status"-<?= $ap['status'] === 'rescheduled' ? 'rescheduled' : strtolower($ap['status']) ?>">
+                            <span class="status status-<?= $ap['status'] === 'rescheduled' ? 'rescheduled' : strtolower($ap['status']) ?>">
                                 <?= ucfirst($ap['status']) ?>
                             </span>
+                        </div>
                     </div>
-                </div>
-                <?php endforeach; ?>
-                <div style="text-align:center; margin-top:28px; color:#059669; font-weight:600; cursor:pointer; font-size:15px;">
-                    <i class="fas fa-chevron-down"></i> Discover All
-                </div>
+                    <?php endforeach; ?>
+                    <div style="text-align:center; margin-top:28px; color:#059669; font-weight:600; cursor:pointer; font-size:15px;">
+                        <a href="appointments.php" style="color:#059669; text-decoration:none;">
+                            <i class="fas fa-chevron-down"></i> View All My Ministry Requests
+                        </a>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -492,6 +533,18 @@ $appointments = $pdo->query("SELECT ar.*, u.fullname, ar.type, ar.status FROM ap
             if (event.key === 'Escape') {
                 document.getElementById('userDropdown').classList.remove('show');
             }
+        });
+
+        // Add click event to appointment cards
+        document.addEventListener('DOMContentLoaded', function() {
+            const appointmentCards = document.querySelectorAll('.appointment-item');
+            appointmentCards.forEach(card => {
+                card.addEventListener('click', function(e) {
+                    if (!e.target.classList.contains('btn-view')) {
+                        window.location.href = 'appointments.php';
+                    }
+                });
+            });
         });
     </script>
 </body>

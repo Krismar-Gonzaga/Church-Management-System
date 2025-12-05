@@ -166,7 +166,7 @@ $sacrament_notes = $user['sacrament_notes'] ?? 'No notes';
 $sacrament_status = $user['sacrament_status'] ?? 'No Sacraments Recorded';
 
 // Get all roles for dropdown
-$roles = ['admin'];
+$roles = ['priest'];
 
 // Get sacraments for dropdown
 $sacraments = ['Baptism', 'Confirmation', 'First Communion', 'Matrimony', 'Anointing of the Sick', 'Confession'];

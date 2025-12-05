@@ -259,14 +259,7 @@ foreach ($transactions as $t) {
                     font-weight: 700;
                 }
         </style>
-        <div class="header-search">
-            <form action="search.php" method="GET" style="width:100%; max-width:500px;">
-                <div class="search-box">
-                    <i class="fas fa-search search-icon"></i>
-                    <input type="text" name="q" placeholder="Search announcements, members, appointments..." required>
-                </div>
-            </form>
-        </div>
+        
 
         
         <div class="header-right">

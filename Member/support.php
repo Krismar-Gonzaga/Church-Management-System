@@ -45,7 +45,7 @@ $faqs = [
             display:flex; align-items:center; justify-content:space-between;
             padding:0 40px; z-index:1000; box-shadow:0 4px 20px rgba(0,0,0,0.08);
         }
-        .header-left { display:flex; align-items:center; gap:22px; }
+        .header-left { display:flex; align-items:center; gap:1px; }
         .header-left img { height:58px; }
         .header-search {
             flex:1; margin-right:150px; display:flex; justify-content:right; padding:0 30px;
@@ -58,13 +58,12 @@ $faqs = [
         }
         .search-box input:focus { border-color:#059669; background:white; box-shadow:0 8px 25px rgba(5,150,105,0.15); }
         .search-icon { position:absolute; left:18px; top:50%; transform:translateY(-50%); color:#059669; font-size:18px; pointer-events:none; }
-        .header-right { display:flex; align-items:center; gap:10px; }
-        .notification-bell { position:relative; font-size:23px; color:#64748b; cursor:pointer; }
-        .notification-bell .badge {
-            position:absolute; top:-8px; right:-8px; background:#ef4444; color:white;
-            font-size:10px; width:19px; height:19px; border-radius:50%;
-            display:flex; align-items:center; justify-content:center; font-weight:bold;
-        }
+        .header-right { display: flex; align-items: center; gap: 24px; }
+        .notification-bell { position: relative; font-size: 23px; color: var(--gray); cursor: pointer; }
+        .notification-bell .badge { position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; font-size: 10px; width: 19px; height: 19px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .user-profile { display: flex; align-items: center; gap: 12px; background: var(--light-green); padding: 10px 18px; border-radius: 14px; cursor: pointer; border: 1px solid #d1fae5; }
+        .user-profile:hover { background: #d1fae5; }
+        .user-profile img { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--green); }
         .main-layout { display:flex; margin-top:70px; }
         .sidebar { width:240px; background:white; border-right:1px solid #e5e7eb; min-height:calc(100vh - 70px); position:fixed; top:70px; bottom:0; }
         .nav-menu { padding:30px 20px; display:flex; flex-direction:column; gap:8px; }
@@ -85,20 +84,15 @@ $faqs = [
         <img src="../images/logo.png" alt="SJPL Logo" class="logo-img">
         <h3 class="parish-name">San Jose Parish Laligan</h3 >
         <style>
-                .parish-name {
-                    font-size: 22px;
-                    color: #065f46;
-                    font-weight: 700;
-                }
+            .parish-name {
+                font-size: 22px;
+                color: #065f46;
+                font-weight: 700;
+                margin-right: 970px;
+                
+            }
         </style>
-        <div class="header-search">
-            <form action="search.php" method="GET" style="width:100%; max-width:500px;">
-                <div class="search-box">
-                    <i class="fas fa-search search-icon"></i>
-                    <input type="text" name="q" placeholder="Search announcements, members, appointments..." required>
-                </div>
-            </form>
-        </div>
+        
 
         
         <div class="header-right">
@@ -106,12 +100,38 @@ $faqs = [
                 <i class="fas fa-bell"></i>
                 <span class="badge">3</span>
             </div>
+            <a href="../logout.php" style="text-decoration: none;">
             <div class="user-profile">
                 <span><?= htmlspecialchars($user_fullname) ?></span>
                 <img src="https://via.placeholder.com/44/059669/ffffff?text=<?= substr($user_fullname,0,1) ?>" alt="User">
-                <i class="fas fa-caret-down dropdown-arrow"></i>
+                <i class="fas fa-sign-out-alt"></i>
             </div>
+            </a>
         </div>
+        <script>
+            // Toggle dropdown menu
+            function toggleDropdown() {
+                const dropdown = document.getElementById('userDropdown');
+                dropdown.classList.toggle('show');
+            }
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('userDropdown');
+                const profileContainer = document.querySelector('.user-profile-container');
+                
+                if (!profileContainer.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+
+            // Close dropdown on Escape key
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    document.getElementById('userDropdown').classList.remove('show');
+                }
+            });
+        </script>
     </div>
     <div class="main-layout">
         <div class="sidebar">
