@@ -869,9 +869,7 @@ if (isset($_GET['message'])) {
     <div class="main-layout">
         <!-- SIDEBAR -->
         <div class="sidebar">
-            <div class="logo">
-                <img src="../images/logo.png" alt="SJPL Logo">
-            </div>
+            
             <div class="nav-menu">
                 <a href="dashboard.php" class="nav-item"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
                 <a href="announcements.php" class="nav-item"><i class="fas fa-bullhorn"></i> Announcements</a>
