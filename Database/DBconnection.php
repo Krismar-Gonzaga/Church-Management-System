@@ -71,6 +71,7 @@ function createTables($pdo) {
             password VARCHAR(255) NOT NULL,
             role ENUM('admin','finance','staff','priest','member') DEFAULT 'member',
             phone VARCHAR(15) NULL,
+            zone VARCHAR(100),
             address TEXT NULL,
             profile_pic VARCHAR(255) DEFAULT 'default.jpg',
             is_active TINYINT(1) DEFAULT 1,

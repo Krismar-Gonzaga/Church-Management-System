@@ -296,7 +296,7 @@ $stats = $pdo->query($stats_query)->fetch(PDO::FETCH_ASSOC);
 $zones = $pdo->query("SELECT DISTINCT zone FROM users WHERE zone IS NOT NULL AND zone != '' ORDER BY zone")->fetchAll(PDO::FETCH_COLUMN);
 
 // Get roles for filter
-$roles = ['admin', 'priest', 'secretary', 'treasurer', 'member'];
+$roles = ['admin', 'priest', 'staff', 'member'];
 ?>
 
 <!DOCTYPE html>
@@ -1292,10 +1292,8 @@ $roles = ['admin', 'priest', 'secretary', 'treasurer', 'member'];
                             <label for="addRole">Role *</label>
                             <select id="addRole" name="role" class="form-control" required>
                                 <option value="member">Member</option>
-                                <option value="secretary">Secretary</option>
-                                <option value="treasurer">Treasurer</option>
                                 <option value="priest">Priest</option>
-                                <option value="admin">Administrator</option>
+                                <option value="staff">Staff</option>
                             </select>
                         </div>
                         <div class="form-group">
