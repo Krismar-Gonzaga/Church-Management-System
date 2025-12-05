@@ -223,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Left: Login Form -->
     <div class="left">
         <div class="logo">
-            <img src="../images/logo.png" alt="SJPL Logo">
+            <img src="images/logo.png" alt="SJPL Logo">
         </div>
 
         <h1>LOGIN</h1>
@@ -274,11 +274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <!-- Right: Decorative Side -->
     <div class="right">
-        <div style="position: relative; z-index: 1; color: white; text-align: center; padding: 20px;">
-            <h2 style="font-size: 36px; margin-bottom: 20px;">Welcome Back!</h2>
-            <p style="font-size: 18px; margin-bottom: 10px;">Different roles, same community.</p>
-            <p style="font-size: 16px; opacity: 0.9;">Login to access your personalized dashboard.</p>
-        </div>
+       
     </div>
 </div>
 

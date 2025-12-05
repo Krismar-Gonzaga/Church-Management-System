@@ -881,7 +881,6 @@ if (isset($_GET['message'])) {
                 <a href="financial_management.php" class="nav-item active"><i class="fas fa-coins"></i> Financial Management</a>
                 <a href="financial_history.php" class="nav-item"><i class="fas fa-history"></i> History Log</a>
                 <a href="profile.php" class="nav-item"><i class="fas fa-user"></i> My Profile</a>
-                <a href="logout.php" class="nav-item"><i class="fas fa-sign-out-alt"></i> Logout</a>
                 <a href="support.php"><div class="nav-item"><i class="fas fa-question-circle"></i> Help & Support</div></a>
             </div>
         </div>

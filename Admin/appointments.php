@@ -476,7 +476,14 @@ $upcoming_appointments = $pdo->query($upcoming_query)->fetchAll();
     <div class="top-header">
         <div class="header-left">
             <img src="../images/logo.png" alt="SJPL Logo">
-            <h3 style="color:#065f46; font-size:24px; font-weight:700;">San Jose Parish Laligan</h3>
+            <h3 class="parish-name">San Jose Parish Laligan</h3>
+            <style>
+                .parish-name {
+                    font-size: 22px;
+                    color: #065f46;
+                    font-weight: 700;
+                }
+            </style>
         </div>
         <form method="GET" action="" class="header-search">
             <div class="search-box">

@@ -149,14 +149,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .nav-item:hover, .nav-item.active { background: var(--light-green); color: var(--green); border-left: 5px solid var(--green); }
         .nav-item a { text-decoration: none; color: inherit; width: 100%; display: flex; align-items: center; gap: 14px; }
 
-        .content-wrapper { margin-left: 260px; padding: 40px; max-width: 1200px; }
+        .content-wrapper { margin-left: 500px; padding: 40px; max-width: 2000px; }
 
         .page-title { font-size: 32px; font-weight: 700; margin-bottom: 30px; color: #1e293b; }
 
         /* Form Styles */
         .request-form-container {
             background: white;
-            border-radius: 20px;
+            border-radius: 20px;            
             padding: 40px;
             box-shadow: 0 8px 30px rgba(0,0,0,0.08);
             margin-bottom: 40px;

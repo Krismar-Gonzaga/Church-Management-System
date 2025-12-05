@@ -201,12 +201,13 @@ $sacraments = ['Baptism', 'Confirmation', 'First Communion', 'Matrimony', 'Anoin
         }
         .header-left { display: flex; align-items: center; gap: 22px; }
         .header-left img { height: 58px; }
-        .header-right { display: flex; align-items: center; gap: 24px; }
-        .notification-bell { position: relative; font-size: 23px; color: var(--gray); cursor: pointer; }
+        .header-right { display: flex; align-items: center; gap: 20px; }
+        .notification-bell { position: relative; font-size: 23px; color: #64748b; cursor: pointer; }
         .notification-bell .badge { position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; font-size: 10px; width: 19px; height: 19px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-        .user-profile { display: flex; align-items: center; gap: 12px; background: var(--light-green); padding: 10px 18px; border-radius: 14px; cursor: pointer; border: 1px solid #d1fae5; }
+        .user-profile { display: flex; align-items: center; gap: 12px; background: var(--light-green); padding: 10px 18px; border-radius: 14px; border: 1px solid #d1fae5; cursor: pointer; }
         .user-profile:hover { background: #d1fae5; }
         .user-profile img { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--green); }
+        .user-profile span { font-weight: 600; color: #065f46; }
 
         /* MAIN LAYOUT */
         .main-layout { display: flex; margin-top: 80px; min-height: calc(100vh - 80px); }

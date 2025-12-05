@@ -288,7 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Left: Register Form -->
     <div class="left">
         <div class="logo">
-            <img src="../images/logo.png" alt="SJPL Logo">        
+            <img src="images/logo.png" alt="SJPL Logo">        
         </div>
 
         <h1>REGISTER</h1>
@@ -357,11 +357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <!-- Right: Inspirational Panel -->
     <div class="right">
-        <h2>Join Our Community</h2>
-        <p>As a <strong>Priest</strong>, you'll have access to:</p>
-        <p>• Manage appointments<br>• View member details<br>• Schedule services</p>
-        <p>As a <strong>Member</strong>, you'll have access to:</p>
-        <p>• Make appointments<br>• View announcements<br>• Access resources</p>
+        
     </div>
 </div>
 

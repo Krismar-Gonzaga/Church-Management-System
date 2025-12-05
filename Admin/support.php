@@ -45,8 +45,9 @@ $faqs = [
             display:flex; align-items:center; justify-content:space-between;
             padding:0 40px; z-index:1000; box-shadow:0 4px 20px rgba(0,0,0,0.08);
         }
-        .header-left { display:flex; align-items:center; gap:22px; }
-        .header-left img { height:58px; }
+        .header-left { display: flex; align-items: center; gap: 22px; }
+        .header-left img { height: 58px; }
+        .header-left .priest-img { width: 54px; height: 54px; border-radius: 50%; border: 3px solid var(--green); object-fit: cover; }
         .header-search {
             flex:1; margin-right:20px; display:flex; justify-content:right; padding:0 30px;
         }
@@ -85,6 +86,13 @@ $faqs = [
         <div class="header-left">
             <img src="../images/logo.png" alt="SJPL Logo">
             <h3 class="parish-name">San Jose Parish Laligan</h3>
+            <style>
+                .parish-name {
+                    font-size: 22px;
+                    color: #065f46;
+                    font-weight: 700;
+                }
+            </style>
         </div>
         
         <div class="header-right">
